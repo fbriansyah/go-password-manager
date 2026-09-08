@@ -101,12 +101,31 @@ the list on the left, the selected secret's fields on the right.
 | `←` `→` | change the field type (on a field's label) |
 | `ctrl+n` | add a field |
 | `ctrl+d` | remove the focused field |
-| `ctrl+g` | generate a password (password fields only) |
+| `ctrl+g` | open the generator panel (password fields only) |
 | `ctrl+s` | save |
 | `esc` | cancel |
 
 Field types are `Text` (single line), `Password` (masked, generatable) and
 `Note` (multi-line).
+
+**Generator panel**
+
+`ctrl+g` opens a panel over the field rows, showing a candidate password next
+to the four knobs that shape it — this is the Generator Policy.
+
+| Key | Action |
+|---|---|
+| `↑` `↓` | move between knobs (length, upper, digits, symbols) |
+| `←` `→` | change the focused knob — length by one, a class on or off |
+| digits | type a length directly |
+| `r` | reroll: a new candidate, same knobs |
+| `enter` | accept the candidate shown |
+| `ctrl+s` | save the current knobs to `config.yaml` as the default |
+| `esc` | close without touching the field |
+
+A Policy changed in the panel stays in effect for the rest of the session even
+without saving; `ctrl+s` is only for making it the default the next time gopm
+starts.
 
 Copying starts a short-lived helper process that clears the clipboard 30
 seconds later, and only if the clipboard still holds what gopm put there — so
@@ -120,17 +139,27 @@ from the title, so "Facebook" becomes `facebook.gopm`, and renaming the title
 renames the file. Everything inside — title, description, tags and all fields —
 is encrypted; the filename is the one part that stays readable.
 
-`config.yaml` holds two paths:
+`config.yaml` holds the key paths, and optionally the Generator Policy:
 
 ```yaml
 PUBLIC_KEY_PATH: "/home/you/.config/gopm/recipient.pub"
 PRIVATE_KEY_PATH: "/home/you/.config/gopm/identity.age"
+GENERATOR_LENGTH: 24
+GENERATOR_UPPER: true
+GENERATOR_DIGITS: true
+GENERATOR_SYMBOLS: false
 ```
 
-Both accept `~` and environment variables. Drop a `.gopm.yaml` in a vault
-folder to override either path for that folder only — useful when a project
-should use a separate key. The override is read from the vault folder, so it
-follows `-d`.
+Both key paths accept `~` and environment variables. Drop a `.gopm.yaml` in a
+vault folder to override any of these keys for that folder only — useful when
+a project should use a separate key, or a client's site rejects symbols. The
+override is read from the vault folder, so it follows `-d`.
+
+Every key is optional and merges independently: a key a file does not mention
+is inherited from the file below it, and ultimately from the built-in default
+(20 characters, every class on) if no file mentions it at all. `gopm init`
+never writes the generator keys itself — they only appear once you save a
+Policy from the generator panel, or add them by hand.
 
 Since only the public key is needed to write, a machine that holds
 `recipient.pub` alone can add secrets to a vault without ever being able to
@@ -151,4 +180,5 @@ decisions behind it in [docs/adr/](./docs/adr/).
 ## Status
 
 Working today: `init`, unlock, list and search, view and copy fields, create
-new secrets. Editing and deleting existing secrets are not implemented yet.
+new secrets with a configurable password generator. Editing and deleting
+existing secrets are not implemented yet.

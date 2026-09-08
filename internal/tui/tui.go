@@ -16,6 +16,7 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/clipboard"
 	"github.com/fbriansyah/go-password-manager/internal/config"
 	"github.com/fbriansyah/go-password-manager/internal/crypto"
+	"github.com/fbriansyah/go-password-manager/internal/generator"
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 	"github.com/fbriansyah/go-password-manager/internal/vault"
 )
@@ -105,8 +106,9 @@ type (
 		secret  *secret.Secret
 		entries []entry
 	}
-	copiedMsg struct{ label string }
-	tickMsg   time.Time
+	copiedMsg      struct{ label string }
+	policySavedMsg struct{}
+	tickMsg        time.Time
 )
 
 // unlockCmd opens the Identity, then loads every Secret. Because the whole file
@@ -178,6 +180,23 @@ func copyCmd(f secret.Field) tea.Cmd {
 	}
 }
 
+// saveGeneratorCmd writes o to the global configuration as the new default
+// Generator Policy. It always targets the global file, never a Vault's
+// override — a UI preference does not belong in a folder people sync or
+// commit (docs/milestone-3.md).
+func saveGeneratorCmd(o generator.Options) tea.Cmd {
+	return func() tea.Msg {
+		_, path, err := config.Defaults()
+		if err != nil {
+			return failedMsg{err}
+		}
+		if err := config.UpdateGenerator(path, o); err != nil {
+			return failedMsg{err}
+		}
+		return policySavedMsg{}
+	}
+}
+
 func tick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
@@ -225,6 +244,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus("", false)
 		return m, tick()
 
+	case policySavedMsg:
+		m.setStatus("generator policy saved as default", false)
+		return m, nil
+
 	case tickMsg:
 		if time.Now().Before(m.clearsAt) {
 			return m, tick()
@@ -264,6 +287,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case screenForm:
+		if m.form.genOpen {
+			return m.handleGeneratorKey(msg)
+		}
 		switch {
 		case msg.Type == tea.KeyEsc:
 			m.screen = screenList
@@ -283,7 +309,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.form.removeRow()
 			return m, nil
 		case msg.Type == tea.KeyCtrlG:
-			m.form.generate()
+			m.form.openGenerator()
 			return m, nil
 		case msg.Type == tea.KeyTab, msg.Type == tea.KeyDown && m.formNavigable():
 			m.form.moveFocus(1)
@@ -313,7 +339,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		case "n":
-			m.form = newForm()
+			m.form = newForm(m.cfg.Generator)
 			m.screen = screenForm
 			m.setStatus("", false)
 			return m, nil
@@ -360,6 +386,50 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // formNavigable keeps up/down arrows moving the cursor inside a multi-line note
 // instead of jumping between fields.
+// handleGeneratorKey handles every key while the generator panel is open. It
+// keeps them from reaching the field rows underneath, and from the form-level
+// bindings they would otherwise collide with — ctrl+s here saves the Policy,
+// not the Secret.
+func (m Model) handleGeneratorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.form.closeGenerator()
+		m.cfg.Generator = m.form.policy
+		return m, nil
+	case tea.KeyEnter:
+		m.form.acceptGenerator()
+		m.cfg.Generator = m.form.policy
+		return m, nil
+	case tea.KeyUp:
+		m.form.moveGenKnob(-1)
+		return m, nil
+	case tea.KeyDown:
+		m.form.moveGenKnob(1)
+		return m, nil
+	case tea.KeyLeft:
+		m.form.adjustGenKnob(-1)
+		return m, nil
+	case tea.KeyRight:
+		m.form.adjustGenKnob(1)
+		return m, nil
+	case tea.KeyCtrlS:
+		m.cfg.Generator = m.form.policy
+		return m, saveGeneratorCmd(m.cfg.Generator)
+	case tea.KeyRunes:
+		if msg.String() == "r" {
+			m.form.rerollGenerator()
+			return m, nil
+		}
+		for _, r := range msg.Runes {
+			if r >= '0' && r <= '9' {
+				m.form.typeLength(r)
+			}
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
 func (m Model) formNavigable() bool {
 	row, part, ok := m.form.rowAt(m.form.focus)
 	if !ok || part == 0 {
