@@ -1,5 +1,5 @@
-// Package tui adalah lapisan presentasi. Ia memanggil Vault dan crypto, tetapi
-// tidak pernah menyentuh filesystem atau age secara langsung.
+// Package tui is the presentation layer. It calls into Vault and crypto, but
+// never touches the filesystem or age directly.
 package tui
 
 import (
@@ -28,7 +28,7 @@ const (
 	screenForm
 )
 
-// entry adalah satu Secret yang sudah didekripsi ke memori saat Unlock.
+// entry is one Secret, decrypted into memory during Unlock.
 type entry struct {
 	slug string
 	data *secret.Secret
@@ -46,12 +46,12 @@ func (e entry) Description() string {
 	return e.slug
 }
 
-// FilterValue membuat pencarian menjangkau judul, deskripsi, dan tag.
+// FilterValue lets a search reach the title, the description, and the tags.
 func (e entry) FilterValue() string {
 	return strings.Join(append([]string{e.data.Meta.Title, e.data.Meta.Description}, e.data.Meta.Tags...), " ")
 }
 
-// Model adalah keseluruhan aplikasi TUI.
+// Model is the whole TUI application.
 type Model struct {
 	vaultDir string
 	cfg      config.Config
@@ -74,7 +74,7 @@ type Model struct {
 	fatalError error
 }
 
-// New menyiapkan aplikasi untuk Vault di vaultDir.
+// New prepares the application for the Vault at vaultDir.
 func New(vaultDir string, cfg config.Config) Model {
 	l := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "Secret"
@@ -91,7 +91,7 @@ func New(vaultDir string, cfg config.Config) Model {
 
 func (m Model) Init() tea.Cmd { return tea.Batch(tea.SetWindowTitle("gopm"), textinput.Blink) }
 
-// Pesan internal.
+// Internal messages.
 type (
 	unlockedMsg struct {
 		session *crypto.Session
@@ -109,8 +109,8 @@ type (
 	tickMsg   time.Time
 )
 
-// unlockCmd membuka Identity lalu memuat seluruh Secret. Karena seluruh isi
-// file dienkripsi, daftar baru bisa ditampilkan setelah langkah ini selesai
+// unlockCmd opens the Identity, then loads every Secret. Because the whole file
+// is encrypted, the list can only be shown once this step finished
 // (docs/adr/0004).
 func unlockCmd(cfg config.Config, vaultDir, password string) tea.Cmd {
 	return func() tea.Msg {
@@ -130,9 +130,9 @@ func unlockCmd(cfg config.Config, vaultDir, password string) tea.Cmd {
 	}
 }
 
-// loadAll memuat semua Secret. Secret yang tidak bisa dibuka — misalnya
-// dienkripsi untuk Recipient lain — dilewati dan dilaporkan, bukan membuat
-// seluruh Vault gagal dibuka.
+// loadAll loads every Secret. One that cannot be opened — encrypted for another
+// Recipient, say — is skipped and reported rather than failing the whole
+// Vault.
 func loadAll(store vault.Vault) ([]entry, []string, error) {
 	slugs, err := store.List()
 	if err != nil {
@@ -194,7 +194,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenList
 		m.setEntries(msg.entries, "")
 		if len(msg.skipped) > 0 {
-			m.setStatus(fmt.Sprintf("%d secret tidak bisa dibuka dengan identity ini: %s",
+			m.setStatus(fmt.Sprintf("%d secret(s) cannot be opened with this identity: %s",
 				len(msg.skipped), strings.Join(msg.skipped, ", ")), true)
 		}
 		m.layout()
@@ -216,7 +216,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case createdMsg:
 		m.screen = screenList
 		m.setEntries(msg.entries, msg.slug)
-		m.setStatus("tersimpan sebagai "+msg.slug+vault.Ext, false)
+		m.setStatus("saved as "+msg.slug+vault.Ext, false)
 		m.layout()
 		return m, nil
 
@@ -252,7 +252,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			password := m.unlock.input.Value()
 			if password == "" {
-				m.unlock.err = errors.New("master password tidak boleh kosong")
+				m.unlock.err = errors.New("the master password cannot be empty")
 				return m, nil
 			}
 			m.unlock.busy, m.unlock.err = true, nil
@@ -358,8 +358,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// formNavigable menahan panah atas/bawah agar tetap menggerakkan kursor di
-// dalam catatan multi-baris, bukan berpindah field.
+// formNavigable keeps up/down arrows moving the cursor inside a multi-line note
+// instead of jumping between fields.
 func (m Model) formNavigable() bool {
 	row, part, ok := m.form.rowAt(m.form.focus)
 	if !ok || part == 0 {
@@ -444,7 +444,7 @@ func (m *Model) setStatus(text string, isErr bool) {
 	m.status, m.statusErr = text, isErr
 }
 
-// layout membagi lebar layar: daftar di kiri, detail di kanan.
+// layout splits the screen width: the list on the left, the detail on the right.
 func (m *Model) layout() {
 	if m.width == 0 {
 		return
@@ -468,7 +468,7 @@ func (m Model) View() string {
 		return ""
 	}
 	if m.width == 0 {
-		return "memuat…"
+		return "loading…"
 	}
 	switch m.screen {
 	case screenUnlock:
@@ -495,11 +495,11 @@ func (m Model) statusLine() string {
 		}
 		return styleOK.Render(m.status)
 	}
-	if sisa := time.Until(m.clearsAt); sisa > 0 {
-		return styleOK.Render(fmt.Sprintf("tersalin ke clipboard · dihapus dalam %ds", int(sisa.Seconds()+0.5)))
+	if left := time.Until(m.clearsAt); left > 0 {
+		return styleOK.Render(fmt.Sprintf("copied to clipboard · cleared in %ds", int(left.Seconds()+0.5)))
 	}
 	if m.detail.focused {
-		return styleHelp.Render("j/k pilih field · c salin · r perlihatkan · esc kembali ke daftar · q keluar")
+		return styleHelp.Render("j/k pick field · c copy · r reveal · esc back to list · q quit")
 	}
-	return styleHelp.Render("↑/↓ pilih · / cari · tab ke detail · n baru · q keluar")
+	return styleHelp.Render("↑/↓ pick · / search · tab to detail · n new · q quit")
 }

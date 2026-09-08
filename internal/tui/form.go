@@ -13,8 +13,8 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 )
 
-// fieldRow adalah satu Field yang sedang disunting. Editor yang dipakai
-// ditentukan oleh EditorKind milik Field Type, bukan oleh form ini.
+// fieldRow is one Field being edited. Which editor it uses is decided by the
+// Field Type's EditorKind, not by this form.
 type fieldRow struct {
 	typeIndex int
 	label     textinput.Model
@@ -28,10 +28,10 @@ func newFieldRow() fieldRow {
 	label.CharLimit = 64
 
 	line := textinput.New()
-	line.Placeholder = "nilai"
+	line.Placeholder = "value"
 
 	area := textarea.New()
-	area.Placeholder = "catatan"
+	area.Placeholder = "note"
 	area.SetHeight(3)
 
 	return fieldRow{label: label, line: line, area: area}
@@ -54,7 +54,7 @@ func (r *fieldRow) setValue(v string) {
 	r.line.SetValue(v)
 }
 
-// syncEcho membuat editor menyembunyikan ketikan untuk tipe bertopeng.
+// syncEcho makes the editor hide what is typed for masked types.
 func (r *fieldRow) syncEcho() {
 	if r.fieldType().Editor == secret.EditorMasked {
 		r.line.EchoMode = textinput.EchoPassword
@@ -64,33 +64,33 @@ func (r *fieldRow) syncEcho() {
 	r.line.EchoMode = textinput.EchoNormal
 }
 
-// formModel adalah form pembuatan Secret baru: Meta di atas, sederet Field di
-// bawahnya. Fokus berjalan lurus dari atas ke bawah dengan tab.
+// formModel is the new-Secret form: Meta at the top, a series of Fields below
+// it. Focus runs straight down with tab.
 type formModel struct {
 	title       textinput.Model
 	description textinput.Model
 	tags        textinput.Model
 	rows        []fieldRow
-	focus       int // 0 judul, 1 deskripsi, 2 tag, lalu 3+ untuk baris field
+	focus       int // 0 title, 1 description, 2 tags, then 3+ for field rows
 	err         error
 }
 
 const metaInputs = 3
 
-// inputsPerRow: label dan nilai masing-masing satu titik fokus.
+// inputsPerRow: the label and the value are one focus stop each.
 const inputsPerRow = 2
 
 func newForm() formModel {
 	title := textinput.New()
-	title.Placeholder = "judul, mis. Facebook"
+	title.Placeholder = "title, e.g. Facebook"
 	title.CharLimit = 120
 	title.Focus()
 
 	desc := textinput.New()
-	desc.Placeholder = "deskripsi (opsional)"
+	desc.Placeholder = "description (optional)"
 
 	tags := textinput.New()
-	tags.Placeholder = "tag, dipisah koma (opsional)"
+	tags.Placeholder = "tags, comma separated (optional)"
 
 	row := newFieldRow()
 	row.syncEcho()
@@ -99,8 +99,8 @@ func newForm() formModel {
 
 func (m formModel) focusCount() int { return metaInputs + len(m.rows)*inputsPerRow }
 
-// rowAt menerjemahkan posisi fokus menjadi indeks baris field dan bagian mana
-// dari baris itu yang sedang difokus.
+// rowAt turns a focus position into a field row index and which part of that
+// row currently has focus.
 func (m formModel) rowAt(focus int) (row int, part int, ok bool) {
 	if focus < metaInputs {
 		return 0, 0, false
@@ -165,7 +165,7 @@ func (m *formModel) removeRow() {
 	m.applyFocus()
 }
 
-// cycleType mengganti Field Type baris yang sedang difokus.
+// cycleType changes the Field Type of the focused row.
 func (m *formModel) cycleType(delta int) {
 	row, _, ok := m.rowAt(m.focus)
 	if !ok {
@@ -177,8 +177,8 @@ func (m *formModel) cycleType(delta int) {
 	m.applyFocus()
 }
 
-// generate mengisi baris yang sedang difokus dengan password acak, hanya untuk
-// tipe yang memang boleh dibangkitkan.
+// generate fills the focused row with a random password, only for types that
+// are allowed to be generated.
 func (m *formModel) generate() {
 	row, _, ok := m.rowAt(m.focus)
 	if !ok || !m.rows[row].fieldType().Generatable {
@@ -193,8 +193,8 @@ func (m *formModel) generate() {
 	m.err = nil
 }
 
-// secretValue menyusun Secret dari isi form. Field yang label dan nilainya
-// sama-sama kosong diabaikan, sehingga baris sisa tidak ikut tersimpan.
+// secretValue builds a Secret from the form. A Field whose label and value are
+// both empty is ignored, so leftover rows are not saved.
 func (m formModel) secretValue() *secret.Secret {
 	s := &secret.Secret{
 		Meta: secret.Meta{
@@ -247,11 +247,11 @@ func (m formModel) Update(msg tea.Msg) (formModel, tea.Cmd) {
 
 func (m formModel) View(width int) string {
 	lines := []string{
-		styleTitle.Render("Secret baru"),
+		styleTitle.Render("New secret"),
 		"",
-		labeled("Judul", m.title.View(), m.focus == 0),
-		labeled("Deskripsi", m.description.View(), m.focus == 1),
-		labeled("Tag", m.tags.View(), m.focus == 2),
+		labeled("Title", m.title.View(), m.focus == 0),
+		labeled("Description", m.description.View(), m.focus == 1),
+		labeled("Tags", m.tags.View(), m.focus == 2),
 		"",
 	}
 	for i, r := range m.rows {
@@ -272,14 +272,14 @@ func (m formModel) View(width int) string {
 		if r.fieldType().Editor == secret.EditorArea {
 			editor = r.area.View()
 		}
-		lines = append(lines, labeled("Nilai", editor, active && part == 1))
+		lines = append(lines, labeled("Value", editor, active && part == 1))
 		lines = append(lines, "")
 	}
 	if m.err != nil {
 		lines = append(lines, styleErr.Render(m.err.Error()))
 	}
 	lines = append(lines, styleHelp.Render(
-		"tab pindah · ←/→ ganti tipe · ctrl+n tambah field · ctrl+d hapus field · ctrl+g generate · ctrl+s simpan · esc batal"))
+		"tab move · ←/→ change type · ctrl+n add field · ctrl+d remove field · ctrl+g generate · ctrl+s save · esc cancel"))
 	return lipgloss.NewStyle().Padding(1, 2).Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 

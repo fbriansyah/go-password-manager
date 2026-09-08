@@ -15,9 +15,9 @@ import (
 func initCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Membuat keypair dan konfigurasi awal",
-		Long: "Membuat Identity (private key terenkripsi master password) dan Recipient (public key),\n" +
-			"lalu menulis konfigurasi yang menunjuk ke keduanya.",
+		Short: "Create the keypair and the initial configuration",
+		Long: "Creates the Identity (a private key encrypted with the master password) and the Recipient (a public key),\n" +
+			"then writes the configuration that points at both.",
 		Args: cobra.NoArgs,
 		RunE: runInit,
 	}
@@ -29,13 +29,13 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if _, err := os.Stat(cfgPath); err == nil {
-		return fmt.Errorf("%s sudah ada; hapus sendiri jika memang ingin memulai dari nol", cfgPath)
+		return fmt.Errorf("%s already exists; remove it yourself if you really want to start over", cfgPath)
 	}
 
 	out := cmd.OutOrStdout()
-	fmt.Fprintln(out, "Master password melindungi private key yang membuka semua secret.")
-	fmt.Fprintln(out, "Tidak ada cara memulihkannya: kehilangan private key atau lupa password")
-	fmt.Fprintln(out, "berarti semua secret hilang permanen.")
+	fmt.Fprintln(out, "The master password protects the private key that opens every secret.")
+	fmt.Fprintln(out, "There is no way to recover it: losing the private key or forgetting the password")
+	fmt.Fprintln(out, "means every secret is gone permanently.")
 	fmt.Fprintln(out)
 
 	password, err := askPassword("Master password: ")
@@ -43,14 +43,14 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if len(password) < 8 {
-		return fmt.Errorf("master password minimal 8 karakter")
+		return fmt.Errorf("the master password must be at least 8 characters")
 	}
-	ulang, err := askPassword("Ulangi master password: ")
+	again, err := askPassword("Repeat the master password: ")
 	if err != nil {
 		return err
 	}
-	if password != ulang {
-		return fmt.Errorf("master password tidak sama")
+	if password != again {
+		return fmt.Errorf("the master passwords do not match")
 	}
 
 	if err := crypto.GenerateKeypair(cfg.PrivateKeyPath, cfg.PublicKeyPath, password); err != nil {
@@ -63,26 +63,26 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "Identity   : %s\n", cfg.PrivateKeyPath)
 	fmt.Fprintf(out, "Recipient  : %s\n", cfg.PublicKeyPath)
-	fmt.Fprintf(out, "Konfigurasi: %s\n", cfgPath)
+	fmt.Fprintf(out, "Config     : %s\n", cfgPath)
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Cadangkan file identity sekarang. Tanpa file itu, secret tidak dapat dibuka lagi.")
-	fmt.Fprintln(out, "Jalankan `gopm` di folder mana pun untuk mulai menyimpan secret.")
+	fmt.Fprintln(out, "Back up the identity file now. Without it, secrets can never be opened again.")
+	fmt.Fprintln(out, "Run `gopm` in any folder to start storing secrets.")
 	return nil
 }
 
-// askPassword membaca password tanpa menampilkannya. Jika input bukan
-// terminal, pembacaan ditolak — password tidak boleh datang dari pipe yang
-// gampang tersimpan di riwayat atau log.
+// askPassword reads a password without echoing it. If the input is not a
+// terminal the read is refused — a password must not arrive through a pipe that
+// is easily kept in shell history or logs.
 func askPassword(prompt string) (string, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
-		return "", fmt.Errorf("master password harus diketik di terminal")
+		return "", fmt.Errorf("the master password must be typed in a terminal")
 	}
 	fmt.Fprint(os.Stderr, prompt)
 	b, err := term.ReadPassword(fd)
 	fmt.Fprintln(os.Stderr)
 	if err != nil {
-		return "", fmt.Errorf("gagal membaca master password: %w", err)
+		return "", fmt.Errorf("could not read the master password: %w", err)
 	}
 	return strings.TrimSpace(string(b)), nil
 }

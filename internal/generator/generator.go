@@ -1,4 +1,4 @@
-// Package generator membuat password acak untuk mengisi Field bertipe ps.
+// Package generator makes random passwords to fill Fields of type ps.
 package generator
 
 import (
@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Kelas karakter yang bisa dipilih.
+// The character classes that can be picked.
 const (
 	Lower   = "abcdefghijkmnopqrstuvwxyz"
 	Upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ"
@@ -16,7 +16,7 @@ const (
 	Symbols = "!@#$%^&*()-_=+[]{};:,.?"
 )
 
-// Options mengatur bentuk password yang dihasilkan.
+// Options shapes the generated password.
 type Options struct {
 	Length  int
 	Upper   bool
@@ -24,17 +24,17 @@ type Options struct {
 	Symbols bool
 }
 
-// Default adalah pilihan yang dipakai saat pengguna belum mengubah apa pun.
+// Default is what is used until the user changes anything.
 func Default() Options {
 	return Options{Length: 20, Upper: true, Digits: true, Symbols: true}
 }
 
-// ErrTooShort dikembalikan saat panjang yang diminta tidak masuk akal.
-var ErrTooShort = errors.New("panjang password minimal 8 karakter")
+// ErrTooShort is returned when the requested length is unreasonable.
+var ErrTooShort = errors.New("a password must be at least 8 characters long")
 
-// Generate menghasilkan password acak. Setiap kelas karakter yang diaktifkan
-// dijamin muncul minimal sekali, sehingga hasilnya selalu lolos aturan
-// kompleksitas situs yang umum.
+// Generate produces a random password. Every enabled character class is
+// guaranteed to appear at least once, so the result always passes the usual
+// site complexity rules.
 func Generate(o Options) (string, error) {
 	if o.Length < 8 {
 		return "", ErrTooShort
@@ -75,17 +75,17 @@ func Generate(o Options) (string, error) {
 func pick(set string) (byte, error) {
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(set))))
 	if err != nil {
-		return 0, errors.New("sumber acak sistem tidak tersedia")
+		return 0, errors.New("the system random source is unavailable")
 	}
 	return set[n.Int64()], nil
 }
 
-// shuffle mengacak posisi agar karakter wajib tiap kelas tidak selalu di depan.
+// shuffle mixes positions so the mandatory character of each class is not always first.
 func shuffle(b []byte) error {
 	for i := len(b) - 1; i > 0; i-- {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
 		if err != nil {
-			return errors.New("sumber acak sistem tidak tersedia")
+			return errors.New("the system random source is unavailable")
 		}
 		j := n.Int64()
 		b[i], b[j] = b[j], b[i]

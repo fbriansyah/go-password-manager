@@ -7,7 +7,7 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 )
 
-func TestUnmarshalMempertahankanTipeAsing(t *testing.T) {
+func TestUnmarshalKeepsForeignTypes(t *testing.T) {
 	raw := []byte(`{
 	  "meta": {"title": "Facebook"},
 	  "fields": [
@@ -21,50 +21,50 @@ func TestUnmarshalMempertahankanTipeAsing(t *testing.T) {
 	}
 	tipe := secret.TypeFor(s.Fields[1].Type)
 	if tipe.Known() {
-		t.Fatal("totp seharusnya belum dikenal")
+		t.Fatal("totp should not be a known type yet")
 	}
 	if got := tipe.Render(s.Fields[1].Value, false); got != "JBSWY3DPEHPK3PXP" {
-		t.Fatalf("tipe asing tidak dirender sebagai teks biasa: %q", got)
+		t.Fatalf("a foreign type was not rendered as plain text: %q", got)
 	}
-	// Menyimpan ulang tidak boleh menghilangkan field yang tidak dikenali.
+	// Saving again must not drop fields whose type we do not recognise.
 	out, err := secret.Marshal(s)
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
 	if !strings.Contains(string(out), "JBSWY3DPEHPK3PXP") || !strings.Contains(string(out), `"totp"`) {
-		t.Fatalf("field asing hilang saat disimpan ulang: %s", out)
+		t.Fatalf("a foreign field was lost when saved again: %s", out)
 	}
 }
 
-func TestPasswordDisembunyikanSampaiDiminta(t *testing.T) {
+func TestPasswordStaysHiddenUntilAskedFor(t *testing.T) {
 	ps := secret.TypeFor("ps")
-	if got := ps.Render("rahasia123", false); strings.Contains(got, "rahasia") {
-		t.Fatalf("password bocor tanpa reveal: %q", got)
+	if got := ps.Render("s3cret-value", false); strings.Contains(got, "s3cret") {
+		t.Fatalf("the password leaked without reveal: %q", got)
 	}
-	if got := ps.Render("rahasia123", true); got != "rahasia123" {
-		t.Fatalf("reveal tidak menampilkan nilai: %q", got)
+	if got := ps.Render("s3cret-value", true); got != "s3cret-value" {
+		t.Fatalf("reveal did not show the value: %q", got)
 	}
-	if got, _ := ps.Copy("rahasia123"); got != "rahasia123" {
-		t.Fatalf("Copy = %q, mau nilai mentah", got)
+	if got, _ := ps.Copy("s3cret-value"); got != "s3cret-value" {
+		t.Fatalf("Copy = %q, want the raw value", got)
 	}
 }
 
-func TestTypesHanyaTipeYangBisaDibuat(t *testing.T) {
+func TestTypesListsOnlyCreatableTypes(t *testing.T) {
 	var ids []string
 	for _, tp := range secret.Types() {
 		ids = append(ids, tp.ID)
 	}
 	if strings.Join(ids, ",") != "tx,ps,ta" {
-		t.Fatalf("Types = %v, mau [tx ps ta] sesuai urutan pendaftaran", ids)
+		t.Fatalf("Types = %v, want [tx ps ta] in registration order", ids)
 	}
 }
 
-func TestValidateMenolakFieldTanpaLabel(t *testing.T) {
+func TestValidateRefusesAFieldWithoutALabel(t *testing.T) {
 	s := &secret.Secret{
 		Meta:   secret.Meta{Title: "Facebook"},
 		Fields: []secret.Field{{Type: "tx", Label: "  ", Value: "x"}},
 	}
 	if err := s.Validate(); err == nil {
-		t.Fatal("mau error untuk field tanpa label")
+		t.Fatal("want an error for a field without a label")
 	}
 }

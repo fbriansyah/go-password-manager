@@ -9,7 +9,7 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/config"
 )
 
-func TestOverrideVaultMenimpaGlobal(t *testing.T) {
+func TestVaultOverrideBeatsGlobal(t *testing.T) {
 	confHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", confHome)
 	global := filepath.Join(confHome, "gopm", "config.yaml")
@@ -23,7 +23,7 @@ func TestOverrideVaultMenimpaGlobal(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if cfg.PrivateKeyPath != "/global/id.age" {
-		t.Fatalf("tanpa override, PrivateKeyPath = %q", cfg.PrivateKeyPath)
+		t.Fatalf("without an override, PrivateKeyPath = %q", cfg.PrivateKeyPath)
 	}
 
 	override := filepath.Join(vaultDir, config.OverrideName)
@@ -32,28 +32,28 @@ func TestOverrideVaultMenimpaGlobal(t *testing.T) {
 	}
 	cfg, err = config.Load(vaultDir)
 	if err != nil {
-		t.Fatalf("Load dengan override: %v", err)
+		t.Fatalf("Load with an override: %v", err)
 	}
 	if cfg.PrivateKeyPath != "/klien/id.age" {
-		t.Fatalf("PrivateKeyPath = %q, mau nilai dari override", cfg.PrivateKeyPath)
+		t.Fatalf("PrivateKeyPath = %q, want the value from the override", cfg.PrivateKeyPath)
 	}
-	// Nilai yang tidak disebut override tetap datang dari global.
+	// Values the override does not mention still come from the global file.
 	if cfg.PublicKeyPath != "/global/rec.pub" {
-		t.Fatalf("PublicKeyPath = %q, mau tetap dari global", cfg.PublicKeyPath)
+		t.Fatalf("PublicKeyPath = %q, want it kept from the global file", cfg.PublicKeyPath)
 	}
 }
 
-func TestLoadTanpaKonfigurasiApaPun(t *testing.T) {
+func TestLoadWithoutAnyConfiguration(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	if _, err := config.Load(t.TempDir()); !errors.Is(err, config.ErrNotConfigured) {
-		t.Fatalf("err = %v, mau ErrNotConfigured", err)
+		t.Fatalf("err = %v, want ErrNotConfigured", err)
 	}
 }
 
-func TestTildeDanEnvDiterjemahkan(t *testing.T) {
+func TestTildeAndEnvAreExpanded(t *testing.T) {
 	confHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", confHome)
-	t.Setenv("KEYDIR", "/kunci")
+	t.Setenv("KEYDIR", "/keys")
 	global := filepath.Join(confHome, "gopm", "config.yaml")
 	body := "PRIVATE_KEY_PATH: ~/id.age\nPUBLIC_KEY_PATH: ${KEYDIR}/rec.pub\n"
 	if err := os.MkdirAll(filepath.Dir(global), 0o700); err != nil {
@@ -68,9 +68,9 @@ func TestTildeDanEnvDiterjemahkan(t *testing.T) {
 	}
 	home, _ := os.UserHomeDir()
 	if cfg.PrivateKeyPath != filepath.Join(home, "id.age") {
-		t.Fatalf("~ tidak diterjemahkan: %q", cfg.PrivateKeyPath)
+		t.Fatalf("~ was not expanded: %q", cfg.PrivateKeyPath)
 	}
-	if cfg.PublicKeyPath != "/kunci/rec.pub" {
-		t.Fatalf("env tidak diterjemahkan: %q", cfg.PublicKeyPath)
+	if cfg.PublicKeyPath != "/keys/rec.pub" {
+		t.Fatalf("env was not expanded: %q", cfg.PublicKeyPath)
 	}
 }

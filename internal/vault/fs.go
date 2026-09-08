@@ -11,25 +11,25 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 )
 
-// FS adalah Vault yang menyimpan Secret sebagai file di satu folder.
+// FS is a Vault that stores Secrets as files in a single folder.
 type FS struct {
 	dir    string
 	cipher Cipher
 }
 
-// Open menunjuk Vault ke sebuah folder. Folder harus sudah ada — folder yang
-// salah ketik lebih baik ditolak daripada menjadi Vault kosong yang baru.
+// Open points a Vault at a folder. The folder must already exist — a mistyped
+// path is better refused than turned into a new, empty Vault.
 func Open(dir string, cipher Cipher) (*FS, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return nil, fmt.Errorf("path vault tidak sah: %w", err)
+		return nil, fmt.Errorf("invalid vault path: %w", err)
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		return nil, fmt.Errorf("folder vault tidak dapat dibuka: %w", err)
+		return nil, fmt.Errorf("vault folder cannot be opened: %w", err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("%s bukan folder", abs)
+		return nil, fmt.Errorf("%s is not a folder", abs)
 	}
 	return &FS{dir: abs, cipher: cipher}, nil
 }
@@ -39,7 +39,7 @@ func (v *FS) Dir() string { return v.dir }
 func (v *FS) List() ([]string, error) {
 	entries, err := os.ReadDir(v.dir)
 	if err != nil {
-		return nil, fmt.Errorf("isi vault tidak terbaca: %w", err)
+		return nil, fmt.Errorf("vault contents are unreadable: %w", err)
 	}
 	var slugs []string
 	for _, e := range entries {
@@ -58,7 +58,7 @@ func (v *FS) Load(slug string) (*secret.Secret, error) {
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, slug)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("gagal membaca %s: %w", slug, err)
+		return nil, fmt.Errorf("could not read %s: %w", slug, err)
 	}
 	plain, err := v.cipher.Decrypt(data)
 	if err != nil {
@@ -92,14 +92,14 @@ func (v *FS) Save(old string, s *secret.Secret) (string, error) {
 	if slug != old && v.exists(slug) {
 		return "", fmt.Errorf("%w: %s", ErrSlugTaken, slug)
 	}
-	// Tulis isi baru lebih dulu; file lama baru dihapus setelah penulisan
-	// berhasil, sehingga kegagalan di tengah tidak pernah menghilangkan Secret.
+	// Write the new contents first; the old file is removed only once that
+	// succeeded, so a failure midway never loses a Secret.
 	if err := writeAtomic(v.path(slug), data); err != nil {
 		return "", err
 	}
 	if slug != old {
 		if err := os.Remove(v.path(old)); err != nil {
-			return slug, fmt.Errorf("secret tersimpan sebagai %s, tetapi file lama %s gagal dihapus: %w", slug, old, err)
+			return slug, fmt.Errorf("secret saved as %s, but the old file %s could not be removed: %w", slug, old, err)
 		}
 	}
 	return slug, nil
@@ -111,24 +111,24 @@ func (v *FS) Delete(slug string) error {
 		return fmt.Errorf("%w: %s", ErrNotFound, slug)
 	}
 	if err != nil {
-		return fmt.Errorf("gagal menghapus %s: %w", slug, err)
+		return fmt.Errorf("could not delete %s: %w", slug, err)
 	}
 	return nil
 }
 
-// prepare memvalidasi, menyerialisasi, dan mengenkripsi Secret sekaligus
-// menghitung slug tujuannya.
+// prepare validates, serialises, and encrypts a Secret, and works out the slug
+// it should be stored under.
 func (v *FS) prepare(s *secret.Secret) (string, []byte, error) {
 	if err := s.Validate(); err != nil {
 		return "", nil, err
 	}
 	slug := Slug(s.Meta.Title)
 	if slug == "" {
-		return "", nil, fmt.Errorf("judul %q tidak menghasilkan nama file; pakai huruf atau angka", s.Meta.Title)
+		return "", nil, fmt.Errorf("the title %q produces no file name; use letters or digits", s.Meta.Title)
 	}
 	plain, err := secret.Marshal(s)
 	if err != nil {
-		return "", nil, fmt.Errorf("gagal menyiapkan secret: %w", err)
+		return "", nil, fmt.Errorf("could not prepare the secret: %w", err)
 	}
 	data, err := v.cipher.Encrypt(plain)
 	if err != nil {
@@ -144,35 +144,35 @@ func (v *FS) exists(slug string) bool {
 	return err == nil
 }
 
-// writeAtomic menulis ke file sementara di folder yang sama, mem-fsync-nya,
-// lalu rename ke tujuan. Rename bersifat atomik di POSIX, sehingga pembaca
-// tidak pernah melihat Secret yang setengah tertulis.
+// writeAtomic writes to a temporary file in the same folder, fsyncs it, then
+// renames it into place. Rename is atomic on POSIX, so a reader never sees a
+// half-written Secret.
 func writeAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".gopm-*.tmp")
 	if err != nil {
-		return fmt.Errorf("gagal menyiapkan file sementara: %w", err)
+		return fmt.Errorf("could not prepare the temporary file: %w", err)
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // tidak berefek jika rename sudah berhasil
+	defer os.Remove(tmpName) // a no-op once the rename succeeded
 
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
-		return fmt.Errorf("gagal mengatur izin file: %w", err)
+		return fmt.Errorf("could not set the file permissions: %w", err)
 	}
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
-		return fmt.Errorf("gagal menulis secret: %w", err)
+		return fmt.Errorf("could not write the secret: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
 		tmp.Close()
-		return fmt.Errorf("gagal menulis secret ke disk: %w", err)
+		return fmt.Errorf("could not flush the secret to disk: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("gagal menutup file sementara: %w", err)
+		return fmt.Errorf("could not close the temporary file: %w", err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("gagal memindahkan secret ke tempatnya: %w", err)
+		return fmt.Errorf("could not move the secret into place: %w", err)
 	}
 	return nil
 }

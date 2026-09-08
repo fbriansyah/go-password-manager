@@ -8,18 +8,18 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 )
 
-// detailModel adalah panel kanan: isi Secret yang sedang disorot di daftar.
-// Ia hanya menampilkan; pemilik state Secret adalah Model.
+// detailModel is the right pane: the contents of the Secret highlighted in the
+// list. It only displays; Model owns the Secret state.
 type detailModel struct {
 	fieldIndex int
 	reveal     bool
-	focused    bool // true saat panel ini yang menerima tombol
+	focused    bool // true when this pane is the one receiving keys
 }
 
 func (d detailModel) View(s *secret.Secret, slug string, width, height int) string {
 	pane := stylePane.Width(width).Height(height)
 	if s == nil {
-		return pane.Render(styleMuted.Render("Vault kosong.\n\nTekan n untuk membuat secret pertama."))
+		return pane.Render(styleMuted.Render("Empty vault.\n\nPress n to create the first secret."))
 	}
 
 	head := []string{styleTitle.Render(s.Meta.Title)}
@@ -33,7 +33,7 @@ func (d detailModel) View(s *secret.Secret, slug string, width, height int) stri
 
 	body := head
 	if len(s.Fields) == 0 {
-		body = append(body, styleMuted.Render("(tidak ada field)"))
+		body = append(body, styleMuted.Render("(no fields)"))
 	}
 	for i, f := range s.Fields {
 		t := secret.TypeFor(f.Type)

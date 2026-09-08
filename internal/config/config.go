@@ -1,5 +1,5 @@
-// Package config membaca konfigurasi YAML: satu file global, ditimpa oleh file
-// opsional di dalam folder Vault.
+// Package config reads the YAML configuration: one global file, overridden by
+// an optional file inside the Vault folder.
 package config
 
 import (
@@ -12,36 +12,36 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Nama file konfigurasi. Override dicari di folder Vault yang terpilih, bukan
-// di $PWD, sehingga key selalu mengikuti Secret yang dibuka (docs/adr/0001).
+// Configuration file names. The override is looked for in the selected Vault
+// folder, not in $PWD, so the keys always follow the Secrets (docs/adr/0001).
 const (
 	GlobalName   = "config.yaml"
 	OverrideName = ".gopm.yaml"
 )
 
-// Config menunjuk ke Identity dan Recipient yang dipakai sesi ini.
+// Config points at the Identity and Recipient this session uses.
 type Config struct {
-	// PrivateKeyPath adalah lokasi Identity (private key terenkripsi Master Password).
+	// PrivateKeyPath is where the Identity lives (private key encrypted with the Master Password).
 	PrivateKeyPath string
-	// PublicKeyPath adalah lokasi Recipient (public key).
+	// PublicKeyPath is where the Recipient lives (public key).
 	PublicKeyPath string
-	// Source menyebutkan file mana yang terakhir mengisi nilai di atas.
+	// Source names the file that last filled in the values above.
 	Source string
 }
 
-// ErrNotConfigured dikembalikan saat belum ada konfigurasi sama sekali.
-var ErrNotConfigured = errors.New("belum ada konfigurasi; jalankan `gopm init` lebih dulu")
+// ErrNotConfigured is returned when there is no configuration at all yet.
+var ErrNotConfigured = errors.New("no configuration yet; run `gopm init` first")
 
-// Dir mengembalikan folder konfigurasi global.
+// Dir returns the global configuration folder.
 func Dir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("folder konfigurasi tidak diketahui: %w", err)
+		return "", fmt.Errorf("configuration folder is unknown: %w", err)
 	}
 	return filepath.Join(base, "gopm"), nil
 }
 
-// Defaults menghasilkan konfigurasi bawaan untuk `gopm init`.
+// Defaults produces the configuration `gopm init` starts from.
 func Defaults() (Config, string, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -53,8 +53,8 @@ func Defaults() (Config, string, error) {
 	}, filepath.Join(dir, GlobalName), nil
 }
 
-// Load membaca konfigurasi global lalu menimpanya dengan .gopm.yaml di
-// vaultDir bila ada.
+// Load reads the global configuration, then overlays .gopm.yaml from vaultDir
+// when that file exists.
 func Load(vaultDir string) (Config, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -81,19 +81,19 @@ func Load(vaultDir string) (Config, error) {
 		return Config{}, ErrNotConfigured
 	}
 	if cfg.PrivateKeyPath == "" || cfg.PublicKeyPath == "" {
-		return Config{}, fmt.Errorf("konfigurasi di %s tidak lengkap: PRIVATE_KEY_PATH dan PUBLIC_KEY_PATH keduanya wajib", cfg.Source)
+		return Config{}, fmt.Errorf("configuration in %s is incomplete: PRIVATE_KEY_PATH and PUBLIC_KEY_PATH are both required", cfg.Source)
 	}
 	return cfg, nil
 }
 
-// Write menulis konfigurasi ke path dalam format yang dijelaskan Design.md.
+// Write writes the configuration to path in the documented key format.
 func Write(path string, cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("gagal membuat folder konfigurasi: %w", err)
+		return fmt.Errorf("could not create the configuration folder: %w", err)
 	}
 	body := fmt.Sprintf("PUBLIC_KEY_PATH: %q\nPRIVATE_KEY_PATH: %q\n", cfg.PublicKeyPath, cfg.PrivateKeyPath)
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		return fmt.Errorf("gagal menulis %s: %w", path, err)
+		return fmt.Errorf("could not write %s: %w", path, err)
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func merge(path string, cfg *Config) error {
 	v := viper.New()
 	v.SetConfigFile(path)
 	if err := v.ReadInConfig(); err != nil {
-		return fmt.Errorf("gagal membaca %s: %w", path, err)
+		return fmt.Errorf("could not read %s: %w", path, err)
 	}
 	if s := expand(v.GetString("PRIVATE_KEY_PATH")); s != "" {
 		cfg.PrivateKeyPath = s
@@ -117,8 +117,8 @@ func merge(path string, cfg *Config) error {
 	return nil
 }
 
-// expand menerjemahkan ~ dan variabel lingkungan supaya config bisa ditulis
-// tangan tanpa path absolut.
+// expand resolves ~ and environment variables so a config can be written by
+// hand without spelling out absolute paths.
 func expand(s string) string {
 	s = strings.TrimSpace(os.ExpandEnv(s))
 	if s == "~" || strings.HasPrefix(s, "~/") {

@@ -1,6 +1,6 @@
-// Package vault menyimpan dan memuat Secret dari sebuah folder. Ia adalah
-// satu-satunya lapisan yang menyentuh filesystem, dan satu-satunya yang
-// menerjemahkan judul menjadi nama file.
+// Package vault stores and loads Secrets from a folder. It is the only layer
+// that touches the filesystem, and the only one that turns a title into a
+// file name.
 package vault
 
 import (
@@ -11,47 +11,47 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 )
 
-// Ext adalah ekstensi file Secret. Hanya file berekstensi ini yang dianggap
-// bagian dari Vault.
+// Ext is the Secret file extension. Only files carrying it count as part of
+// the Vault.
 const Ext = ".gopm"
 
 var (
-	// ErrNotFound dikembalikan saat slug tidak ada di Vault.
-	ErrNotFound = errors.New("secret tidak ditemukan")
-	// ErrSlugTaken dikembalikan saat nama file tujuan sudah dipakai Secret
-	// lain. Vault tidak pernah menimpa Secret yang bukan sasaran penyimpanan.
-	ErrSlugTaken = errors.New("sudah ada secret dengan judul itu")
+	// ErrNotFound is returned when a slug is not in the Vault.
+	ErrNotFound = errors.New("secret not found")
+	// ErrSlugTaken is returned when the target file name already belongs to
+	// another Secret. A Vault never overwrites a Secret it was not asked to save.
+	ErrSlugTaken = errors.New("a secret with that title already exists")
 )
 
-// Cipher adalah lapisan enkripsi yang dipakai Vault. crypto.Session
-// memenuhinya; pengujian memakai implementasi yang tidak mengenkripsi apa pun.
+// Cipher is the encryption layer a Vault uses. crypto.Session satisfies it;
+// the tests use an implementation that encrypts nothing.
 type Cipher interface {
 	Encrypt(plaintext []byte) ([]byte, error)
 	Decrypt(ciphertext []byte) ([]byte, error)
 }
 
-// Vault adalah kumpulan Secret yang bisa didaftar, dimuat, dan disimpan.
+// Vault is a collection of Secrets that can be listed, loaded, and stored.
 type Vault interface {
-	// Dir menyebutkan lokasi Vault, untuk ditampilkan ke pengguna.
+	// Dir names where the Vault lives, for showing to the user.
 	Dir() string
-	// List mengembalikan seluruh slug di Vault, terurut.
+	// List returns every slug in the Vault, sorted.
 	List() ([]string, error)
-	// Load mendekripsi satu Secret.
+	// Load decrypts one Secret.
 	Load(slug string) (*secret.Secret, error)
-	// Create menyimpan Secret baru dan mengembalikan slug hasilnya.
+	// Create stores a new Secret and returns the slug it got.
 	Create(s *secret.Secret) (string, error)
-	// Save menyimpan perubahan pada slug yang ada. Jika judulnya berubah,
-	// filenya ikut di-rename dan slug baru dikembalikan.
+	// Save stores changes to an existing slug. If the title changed, the file is
+	// renamed too and the new slug is returned.
 	Save(slug string, s *secret.Secret) (string, error)
-	// Delete menghapus satu Secret.
+	// Delete removes one Secret.
 	Delete(slug string) error
 }
 
-// Slug mengubah judul menjadi nama file yang aman. Ini satu-satunya bagian
-// Secret yang terbaca tanpa Unlock — lihat docs/adr/0004.
+// Slug turns a title into a safe file name. This is the only part of a Secret
+// readable without unlocking — see docs/adr/0004.
 func Slug(title string) string {
 	var b strings.Builder
-	lastDash := true // menahan dash di awal
+	lastDash := true // suppress a leading dash
 	for _, r := range strings.ToLower(strings.TrimSpace(title)) {
 		switch {
 		case unicode.IsLetter(r) && r < unicode.MaxASCII, unicode.IsDigit(r) && r < unicode.MaxASCII:

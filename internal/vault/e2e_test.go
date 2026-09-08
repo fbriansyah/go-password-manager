@@ -11,9 +11,9 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/vault"
 )
 
-// Alur utuh Milestone 1: buat keypair, unlock, simpan Secret, baca kembali
-// lewat sesi baru — persis seperti menutup lalu membuka lagi aplikasinya.
-func TestAlurBuatUnlockBacaKembali(t *testing.T) {
+// The whole Milestone 1 flow: create a keypair, unlock, store a Secret, read
+// it back through a fresh session — exactly like closing and reopening the app.
+func TestCreateUnlockReadBackFlow(t *testing.T) {
 	keyDir, vaultDir := t.TempDir(), t.TempDir()
 	idPath := filepath.Join(keyDir, "identity.age")
 	recPath := filepath.Join(keyDir, "recipient.pub")
@@ -21,11 +21,11 @@ func TestAlurBuatUnlockBacaKembali(t *testing.T) {
 		t.Fatalf("GenerateKeypair: %v", err)
 	}
 
-	menulis, err := crypto.Unlock(idPath, "master-password")
+	writer, err := crypto.Unlock(idPath, "master-password")
 	if err != nil {
 		t.Fatalf("Unlock: %v", err)
 	}
-	v, err := vault.Open(vaultDir, menulis)
+	v, err := vault.Open(vaultDir, writer)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -34,40 +34,40 @@ func TestAlurBuatUnlockBacaKembali(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	// File di disk harus armored dan tidak membocorkan apa pun selain slug.
+	// The file on disk must be armored and leak nothing beyond the slug.
 	raw, err := os.ReadFile(filepath.Join(vaultDir, slug+vault.Ext))
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
 	if !strings.HasPrefix(string(raw), "-----BEGIN AGE ENCRYPTED FILE-----") {
-		t.Fatalf("file bukan armored: %.40s", raw)
+		t.Fatalf("file is not armored: %.40s", raw)
 	}
-	for _, bocor := range []string{"rahasia123", "budi@mail.com", "Facebook Credential"} {
-		if strings.Contains(string(raw), bocor) {
-			t.Fatalf("%q terbaca di file terenkripsi", bocor)
+	for _, leaked := range []string{"s3cret-value", "user@mail.com", "Facebook Credential"} {
+		if strings.Contains(string(raw), leaked) {
+			t.Fatalf("%q is readable in the encrypted file", leaked)
 		}
 	}
 
-	// Sesi baru dengan password yang sama membuka isinya kembali.
-	membaca, err := crypto.Unlock(idPath, "master-password")
+	// A new session with the same password opens the contents again.
+	reader2, err := crypto.Unlock(idPath, "master-password")
 	if err != nil {
-		t.Fatalf("Unlock kedua: %v", err)
+		t.Fatalf("second Unlock: %v", err)
 	}
-	v2, err := vault.Open(vaultDir, membaca)
+	v2, err := vault.Open(vaultDir, reader2)
 	if err != nil {
-		t.Fatalf("Open kedua: %v", err)
+		t.Fatalf("second Open: %v", err)
 	}
 	got, err := v2.Load(slug)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got.Fields[1].Value != "rahasia123" {
-		t.Fatalf("nilai tidak utuh: %+v", got.Fields[1])
+	if got.Fields[1].Value != "s3cret-value" {
+		t.Fatalf("value did not survive: %+v", got.Fields[1])
 	}
 }
 
-// Identity lain tidak bisa membaca Secret milik Identity ini.
-func TestSecretTidakTerbacaOlehIdentityLain(t *testing.T) {
+// A different Identity cannot read a Secret belonging to this one.
+func TestSecretIsUnreadableByAnotherIdentity(t *testing.T) {
 	dirA, dirB, vaultDir := t.TempDir(), t.TempDir(), t.TempDir()
 	if err := crypto.GenerateKeypair(filepath.Join(dirA, "id.age"), filepath.Join(dirA, "rec.pub"), "aaa-master"); err != nil {
 		t.Fatalf("keypair A: %v", err)
@@ -91,12 +91,12 @@ func TestSecretTidakTerbacaOlehIdentityLain(t *testing.T) {
 		t.Fatalf("Open B: %v", err)
 	}
 	if _, err := vb.Load(slug); err == nil {
-		t.Fatal("identity lain berhasil membaca secret")
+		t.Fatal("another identity managed to read the secret")
 	}
 }
 
-// Recipient saja cukup untuk menambah Secret ke Vault tanpa master password.
-func TestMenulisKeVaultTanpaMasterPassword(t *testing.T) {
+// The Recipient alone is enough to add a Secret without the master password.
+func TestWritingToAVaultWithoutTheMasterPassword(t *testing.T) {
 	keyDir, vaultDir := t.TempDir(), t.TempDir()
 	idPath := filepath.Join(keyDir, "identity.age")
 	recPath := filepath.Join(keyDir, "recipient.pub")
@@ -117,18 +117,18 @@ func TestMenulisKeVaultTanpaMasterPassword(t *testing.T) {
 	}
 	slug, err := v.Create(s)
 	if err != nil {
-		t.Fatalf("Create tanpa master password: %v", err)
+		t.Fatalf("Create without the master password: %v", err)
 	}
 	if _, err := v.Load(slug); err == nil {
-		t.Fatal("vault recipient-only berhasil membaca")
+		t.Fatal("a recipient-only vault managed to read")
 	}
 	reader, _ := crypto.Unlock(idPath, "master-password")
 	vr, _ := vault.Open(vaultDir, reader)
 	got, err := vr.Load(slug)
 	if err != nil {
-		t.Fatalf("Load oleh pemilik identity: %v", err)
+		t.Fatalf("Load by the identity owner: %v", err)
 	}
 	if got.Fields[0].Value != "tok-123" {
-		t.Fatalf("nilai tidak utuh: %+v", got.Fields[0])
+		t.Fatalf("value did not survive: %+v", got.Fields[0])
 	}
 }

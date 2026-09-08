@@ -105,8 +105,8 @@ the list on the left, the selected secret's fields on the right.
 | `ctrl+s` | save |
 | `esc` | cancel |
 
-Field types are `Teks` (single line), `Password` (masked, generatable) and
-`Catatan` (multi-line).
+Field types are `Text` (single line), `Password` (masked, generatable) and
+`Note` (multi-line).
 
 Copying starts a short-lived helper process that clears the clipboard 30
 seconds later, and only if the clipboard still holds what gopm put there — so

@@ -1,9 +1,9 @@
-// Package clipboard menyalin nilai lewat tool clipboard sistem.
+// Package clipboard copies values through the system clipboard tool.
 //
-// Penyalinan sengaja didelegasikan ke proses terpisah (wl-copy, xclip, pbcopy)
-// dan bukan ditangani di dalam proses ini: di X11 dan Wayland isi clipboard
-// dimiliki oleh proses yang menyalinnya, sehingga nilai akan lenyap begitu TUI
-// ditutup jika kita memegangnya sendiri.
+// Copying is deliberately delegated to a separate process (wl-copy, xclip,
+// pbcopy) instead of being handled in-process: on X11 and Wayland the clipboard
+// contents are owned by the process that copied them, so the value would vanish
+// the moment the TUI exits if we held it ourselves.
 package clipboard
 
 import (
@@ -19,12 +19,12 @@ import (
 	"time"
 )
 
-// ClearAfter adalah jeda sebelum nilai yang disalin dihapus dari clipboard.
+// ClearAfter is how long a copied value stays in the clipboard.
 const ClearAfter = 30 * time.Second
 
-// ErrNoTool dikembalikan saat tidak ada tool clipboard yang terpasang. Fitur
-// salin gagal dengan jelas, bukan diam-diam tidak berfungsi.
-var ErrNoTool = errors.New("tidak ada tool clipboard (pasang wl-clipboard atau xclip)")
+// ErrNoTool is returned when no clipboard tool is installed. Copying fails
+// loudly rather than quietly doing nothing.
+var ErrNoTool = errors.New("no clipboard tool found (install wl-clipboard or xclip)")
 
 type tool struct {
 	copy  []string
@@ -55,16 +55,16 @@ func detect() (tool, error) {
 	return tool{}, ErrNoTool
 }
 
-// Available melaporkan apakah menyalin bisa dilakukan di sistem ini.
+// Available reports whether copying is possible on this system.
 func Available() bool {
 	_, err := detect()
 	return err == nil
 }
 
-// Copy menaruh value di clipboard dan menjadwalkan penghapusannya dengan
-// menjalankan ulang binary ini sebagai proses lepas. Nilainya sendiri tidak
-// pernah muncul sebagai argumen proses — hanya sidik jarinya — sehingga tidak
-// bocor lewat daftar proses.
+// Copy puts value in the clipboard and schedules its removal by re-running this
+// binary as a detached process. The value itself never appears as a process
+// argument — only its fingerprint does — so it cannot leak through the process
+// list.
 func Copy(value string) error {
 	t, err := detect()
 	if err != nil {
@@ -76,9 +76,9 @@ func Copy(value string) error {
 	return scheduleClear(fingerprint(value))
 }
 
-// Clear menghapus isi clipboard hanya jika sidik jarinya masih cocok, sehingga
-// nilai yang disalin pengguna sesudahnya tidak ikut terhapus. Sidik jari
-// kosong berarti hapus tanpa syarat.
+// Clear empties the clipboard only if its fingerprint still matches, so a value
+// the user copied afterwards is not wiped along with it. An empty fingerprint
+// means clear unconditionally.
 func Clear(want string) error {
 	t, err := detect()
 	if err != nil {
@@ -87,7 +87,7 @@ func Clear(want string) error {
 	if want != "" {
 		current, err := output(t.paste)
 		if err != nil {
-			// Clipboard kosong atau tidak terbaca: tidak ada yang perlu dihapus.
+			// Clipboard empty or unreadable: nothing to clear.
 			return nil
 		}
 		if fingerprint(current) != want {
@@ -105,13 +105,13 @@ func fingerprint(value string) string {
 func scheduleClear(fp string) error {
 	self, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("gagal menjadwalkan pembersihan clipboard: %w", err)
+		return fmt.Errorf("could not schedule the clipboard clear: %w", err)
 	}
 	cmd := exec.Command(self, "clipboard-clear", "--after", ClearAfter.String(), "--fingerprint", fp)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // lepas dari TUI
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // detach from the TUI
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("gagal menjadwalkan pembersihan clipboard: %w", err)
+		return fmt.Errorf("could not schedule the clipboard clear: %w", err)
 	}
 	return cmd.Process.Release()
 }
@@ -120,7 +120,7 @@ func run(argv []string, stdin string) error {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin = strings.NewReader(stdin)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s gagal: %w", argv[0], err)
+		return fmt.Errorf("%s failed: %w", argv[0], err)
 	}
 	return nil
 }

@@ -7,14 +7,14 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 )
 
-// Mem adalah Vault di memori dengan aturan yang sama seperti FS. Dipakai
-// pengujian dan sebagai pembanding perilaku.
+// Mem is an in-memory Vault with the same rules as FS. Used by the tests and
+// as a reference for the expected behaviour.
 type Mem struct {
 	cipher Cipher
 	data   map[string][]byte
 }
 
-// NewMem membuat Vault kosong di memori.
+// NewMem creates an empty in-memory Vault.
 func NewMem(cipher Cipher) *Mem {
 	return &Mem{cipher: cipher, data: map[string][]byte{}}
 }
@@ -86,11 +86,11 @@ func (v *Mem) prepare(s *secret.Secret) (string, []byte, error) {
 	}
 	slug := Slug(s.Meta.Title)
 	if slug == "" {
-		return "", nil, fmt.Errorf("judul %q tidak menghasilkan nama file; pakai huruf atau angka", s.Meta.Title)
+		return "", nil, fmt.Errorf("the title %q produces no file name; use letters or digits", s.Meta.Title)
 	}
 	plain, err := secret.Marshal(s)
 	if err != nil {
-		return "", nil, fmt.Errorf("gagal menyiapkan secret: %w", err)
+		return "", nil, fmt.Errorf("could not prepare the secret: %w", err)
 	}
 	data, err := v.cipher.Encrypt(plain)
 	if err != nil {

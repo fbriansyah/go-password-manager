@@ -8,7 +8,7 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/generator"
 )
 
-func TestGeneratePanjangDanKeragaman(t *testing.T) {
+func TestGenerateLengthAndVariety(t *testing.T) {
 	o := generator.Default()
 	seen := map[string]bool{}
 	for i := 0; i < 50; i++ {
@@ -17,37 +17,37 @@ func TestGeneratePanjangDanKeragaman(t *testing.T) {
 			t.Fatalf("Generate: %v", err)
 		}
 		if len(pw) != o.Length {
-			t.Fatalf("panjang = %d, mau %d", len(pw), o.Length)
+			t.Fatalf("length = %d, want %d", len(pw), o.Length)
 		}
 		for name, set := range map[string]string{
-			"huruf kecil": generator.Lower,
-			"huruf besar": generator.Upper,
-			"angka":       generator.Digits,
-			"simbol":      generator.Symbols,
+			"lowercase": generator.Lower,
+			"uppercase": generator.Upper,
+			"digits":    generator.Digits,
+			"simbol":    generator.Symbols,
 		} {
 			if !strings.ContainsAny(pw, set) {
-				t.Fatalf("%q tidak mengandung %s", pw, name)
+				t.Fatalf("%q does not contain %s", pw, name)
 			}
 		}
 		seen[pw] = true
 	}
 	if len(seen) != 50 {
-		t.Fatalf("hanya %d password unik dari 50; keacakan mencurigakan", len(seen))
+		t.Fatalf("only %d unique passwords out of 50; the randomness looks suspect", len(seen))
 	}
 }
 
-func TestGenerateMenghormatiKelasYangDimatikan(t *testing.T) {
+func TestGenerateHonoursDisabledClasses(t *testing.T) {
 	pw, err := generator.Generate(generator.Options{Length: 16})
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
 	if strings.ContainsAny(pw, generator.Upper+generator.Digits+generator.Symbols) {
-		t.Fatalf("%q memuat kelas yang dimatikan", pw)
+		t.Fatalf("%q contains a disabled class", pw)
 	}
 }
 
-func TestGenerateMenolakPanjangTidakAman(t *testing.T) {
+func TestGenerateRefusesAnUnsafeLength(t *testing.T) {
 	if _, err := generator.Generate(generator.Options{Length: 4}); !errors.Is(err, generator.ErrTooShort) {
-		t.Fatalf("err = %v, mau ErrTooShort", err)
+		t.Fatalf("err = %v, want ErrTooShort", err)
 	}
 }
