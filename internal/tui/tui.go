@@ -392,6 +392,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case msg.Type == tea.KeyCtrlG:
 			m.form.openGenerator()
 			return m, nil
+		case msg.Type == tea.KeyCtrlR:
+			m.form.toggleReveal()
+			return m, nil
 		case msg.Type == tea.KeyTab, msg.Type == tea.KeyDown && m.formNavigable():
 			m.form.moveFocus(1)
 			return m, nil

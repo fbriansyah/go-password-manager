@@ -120,6 +120,7 @@ another secret already has that title.
 | `ctrl+n` | add a field |
 | `ctrl+d` | remove the focused field |
 | `ctrl+g` | open the generator panel (password fields only) |
+| `ctrl+r` | reveal/hide the focused value (password fields only) |
 | `ctrl+s` | save |
 | `esc` | cancel; asks first when there are unsaved changes |
 

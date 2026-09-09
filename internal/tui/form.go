@@ -40,6 +40,11 @@ type fieldRow struct {
 	label     textinput.Model
 	line      textinput.Model
 	area      textarea.Model
+	// reveal shows a masked value in plain text while editing, so a Password
+	// field can be checked against what is actually stored without leaving
+	// the form. It always starts hidden again on the next row (never carried
+	// from one field, or one Secret, to another).
+	reveal bool
 }
 
 func newFieldRow() fieldRow {
@@ -74,9 +79,10 @@ func (r *fieldRow) setValue(v string) {
 	r.line.SetValue(v)
 }
 
-// syncEcho makes the editor hide what is typed for masked types.
+// syncEcho makes the editor hide what is typed for masked types, unless
+// reveal has been asked for on this row.
 func (r *fieldRow) syncEcho() {
-	if r.fieldType().Editor == secret.EditorMasked {
+	if r.fieldType().Editor == secret.EditorMasked && !r.reveal {
 		r.line.EchoMode = textinput.EchoPassword
 		r.line.EchoCharacter = '•'
 		return
@@ -281,8 +287,20 @@ func (m *formModel) cycleType(delta int) {
 	}
 	types := secret.Types()
 	m.rows[row].typeIndex = (m.rows[row].typeIndex + delta + len(types)) % len(types)
+	m.rows[row].reveal = false
 	m.rows[row].syncEcho()
 	m.applyFocus()
+}
+
+// toggleReveal shows or hides the value of the focused row in plain text —
+// only meaningful on a masked field's value, so it does nothing elsewhere.
+func (m *formModel) toggleReveal() {
+	row, part, ok := m.rowAt(m.focus)
+	if !ok || part != 1 || m.rows[row].fieldType().Editor != secret.EditorMasked {
+		return
+	}
+	m.rows[row].reveal = !m.rows[row].reveal
+	m.rows[row].syncEcho()
 }
 
 // openGenerator opens the panel over the focused row, only for a Field Type
@@ -483,7 +501,11 @@ func (m formModel) View(width int) string {
 			if r.fieldType().Editor == secret.EditorArea {
 				editor = r.area.View()
 			}
-			lines = append(lines, labeled("Value", editor, active && part == 1))
+			valueLabel := "Value"
+			if r.fieldType().Editor == secret.EditorMasked && r.reveal {
+				valueLabel = "Value (revealed)"
+			}
+			lines = append(lines, labeled(valueLabel, editor, active && part == 1))
 			lines = append(lines, "")
 		}
 	}
@@ -497,7 +519,7 @@ func (m formModel) View(width int) string {
 			"↑/↓ knob · ←/→ change · digits length · r reroll · enter accept · ctrl+s save default · esc cancel"))
 	} else {
 		lines = append(lines, styleHelp.Render(
-			"tab move · ←/→ change type · ctrl+n add field · ctrl+d remove field · ctrl+g generate · ctrl+s save · esc cancel"))
+			"tab move · ←/→ change type · ctrl+n add field · ctrl+d remove field · ctrl+g generate · ctrl+r reveal value · ctrl+s save · esc cancel"))
 	}
 	return lipgloss.NewStyle().Padding(1, 2).Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }

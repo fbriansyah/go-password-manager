@@ -448,6 +448,43 @@ func TestCancellingDeleteTouchesNothing(t *testing.T) {
 	}
 }
 
+func TestCtrlRRevealsAPasswordValueInTheForm(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}) // edit Facebook
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // description
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // tags
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // label of the second field (Password)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // value of the first field (Username)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // label of the second field
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // value of the second field (Password)
+
+	if strings.Contains(m.View(), "s3cret-value") {
+		t.Fatal("the value is shown before ctrl+r is pressed")
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlR})
+	if !strings.Contains(m.View(), "s3cret-value") {
+		t.Fatalf("ctrl+r did not reveal the value:\n%s", m.View())
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlR})
+	if strings.Contains(m.View(), "s3cret-value") {
+		t.Fatal("a second ctrl+r did not hide the value again")
+	}
+}
+
+func TestCtrlRDoesNothingOnANonMaskedField(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}) // edit Facebook
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // description
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // tags
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // label of the first field (Username, "tx")
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // value of the first field
+
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlR})
+	if m.form.rows[0].reveal {
+		t.Fatal("ctrl+r toggled reveal on a field type that is never masked")
+	}
+}
+
 func TestDuplicateTitleIsRefusedWithAClearMessage(t *testing.T) {
 	m := unlocked(t)
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
