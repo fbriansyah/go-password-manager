@@ -278,6 +278,176 @@ func TestGeneratorPolicyStaysForTheSession(t *testing.T) {
 	}
 }
 
+func TestEditFormChangesAValueInPlace(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if m.screen != screenForm {
+		t.Fatalf("screen = %v, want screenForm", m.screen)
+	}
+	if m.form.editSlug != "facebook" {
+		t.Fatalf("editSlug = %q, want facebook", m.form.editSlug)
+	}
+	if m.form.title.Value() != "Facebook" {
+		t.Fatalf("title = %q, want the existing title", m.form.title.Value())
+	}
+
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // description
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // tags
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // label of the first field
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // value of the first field
+	// clear the existing username and type a new one
+	for range "user@mail.com" {
+		m = update(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("new@mail.com")})
+
+	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	if m.screen != screenList {
+		t.Fatalf("screen = %v after saving, want screenList (err: %v)", m.screen, m.form.err)
+	}
+	if len(m.list.Items()) != 1 {
+		t.Fatalf("item count = %d, want 1 — the slug must not have changed", len(m.list.Items()))
+	}
+	s, err := m.store.Load("facebook")
+	if err != nil {
+		t.Fatalf("Load facebook: %v", err)
+	}
+	if s.Fields[0].Value != "new@mail.com" {
+		t.Fatalf("the edit did not persist: %+v", s.Fields[0])
+	}
+}
+
+func TestEditFormRenamesOnTitleChange(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	for range "Facebook" {
+		m = update(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Meta")})
+	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	if m.screen != screenList {
+		t.Fatalf("screen = %v after saving, want screenList (err: %v)", m.screen, m.form.err)
+	}
+	if _, err := m.store.Load("facebook"); err == nil {
+		t.Fatal("the old slug is still there after a rename")
+	}
+	got, err := m.store.Load("meta")
+	if err != nil {
+		t.Fatalf("Load meta: %v", err)
+	}
+	if got.Fields[0].Value != "user@mail.com" {
+		t.Fatalf("the contents did not survive the rename: %+v", got.Fields[0])
+	}
+}
+
+func TestEditFormRefusesARenameThatCollides(t *testing.T) {
+	m := unlocked(t)
+	// A second secret to collide with.
+	if _, err := m.store.Create(&secret.Secret{
+		Meta:   secret.Meta{Title: "Gmail"},
+		Fields: []secret.Field{{Type: "tx", Label: "Username", Value: "x"}},
+	}); err != nil {
+		t.Fatalf("Create Gmail: %v", err)
+	}
+
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}) // edit Facebook
+	for range "Facebook" {
+		m = update(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Gmail")})
+	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	if m.screen != screenForm {
+		t.Fatal("a colliding rename must not be saved")
+	}
+	if m.form.err == nil || !strings.Contains(m.form.err.Error(), "already exists") {
+		t.Fatalf("the error message does not explain the collision: %v", m.form.err)
+	}
+	if _, err := m.store.Load("facebook"); err != nil {
+		t.Fatalf("the original secret was touched despite the refusal: %v", err)
+	}
+}
+
+func TestEscOnAnUntouchedEditFormCancelsImmediately(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.screen != screenList {
+		t.Fatalf("screen = %v, want screenList — esc on an untouched form should not ask", m.screen)
+	}
+}
+
+func TestEscOnADirtyEditFormAsksFirst(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}) // dirty the title
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.screen != screenForm {
+		t.Fatal("the first esc on a dirty form must ask before discarding")
+	}
+	if !m.form.confirmDiscard {
+		t.Fatal("want confirmDiscard set after the first esc")
+	}
+
+	// Any other key cancels the discard and returns to editing.
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	if m.form.confirmDiscard {
+		t.Fatal("a non-esc key should cancel the pending discard")
+	}
+	if m.screen != screenForm {
+		t.Fatal("a non-esc key should not leave the form")
+	}
+
+	// A second esc actually discards.
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.screen != screenForm {
+		t.Fatal("esc must ask again on the still-dirty form")
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.screen != screenList {
+		t.Fatal("the second esc did not discard the form")
+	}
+	s, err := m.store.Load("facebook")
+	if err != nil {
+		t.Fatalf("Load facebook: %v", err)
+	}
+	if s.Meta.Title != "Facebook" {
+		t.Fatalf("the discarded edit reached the vault: %+v", s.Meta)
+	}
+}
+
+func TestDeleteRemovesTheSecretAfterConfirmation(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	if m.screen != screenConfirmDelete {
+		t.Fatalf("screen = %v, want screenConfirmDelete", m.screen)
+	}
+	m = run(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	if m.screen != screenList {
+		t.Fatalf("screen = %v after confirming, want screenList", m.screen)
+	}
+	if len(m.list.Items()) != 0 {
+		t.Fatalf("item count = %d, want 0", len(m.list.Items()))
+	}
+	if _, err := m.store.Load("facebook"); err == nil {
+		t.Fatal("the secret is still in the vault after delete")
+	}
+}
+
+func TestCancellingDeleteTouchesNothing(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	if m.screen != screenList {
+		t.Fatalf("screen = %v after cancelling, want screenList", m.screen)
+	}
+	if len(m.list.Items()) != 1 {
+		t.Fatalf("item count = %d, want 1 — cancel must not delete", len(m.list.Items()))
+	}
+	if _, err := m.store.Load("facebook"); err != nil {
+		t.Fatalf("Load facebook after cancel: %v", err)
+	}
+}
+
 func TestDuplicateTitleIsRefusedWithAClearMessage(t *testing.T) {
 	m := unlocked(t)
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})

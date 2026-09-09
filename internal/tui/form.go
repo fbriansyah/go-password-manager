@@ -94,6 +94,17 @@ type formModel struct {
 	focus       int // 0 title, 1 description, 2 tags, then 3+ for field rows
 	err         error
 
+	// editSlug is the slug this form is saving back to. Empty means the form
+	// is creating a new Secret rather than editing one.
+	editSlug string
+	// initial is the marshaled form contents at the moment it was built, so
+	// dirty can tell an untouched form from one with unsaved changes without
+	// keeping a second copy of every field around.
+	initial []byte
+	// confirmDiscard is true once esc has been pressed on a dirty form and is
+	// waiting for a second esc to actually discard it.
+	confirmDiscard bool
+
 	// policy is the Generator Policy this form's session is currently using.
 	// It starts from configuration, may be changed from the panel below, and
 	// outlives any one field it fills (docs/milestone-3.md).
@@ -130,7 +141,68 @@ func newForm(policy generator.Options) formModel {
 
 	row := newFieldRow()
 	row.syncEcho()
-	return formModel{title: title, description: desc, tags: tags, rows: []fieldRow{row}, policy: policy}
+	m := formModel{title: title, description: desc, tags: tags, rows: []fieldRow{row}, policy: policy}
+	m.initial, _ = secret.Marshal(m.secretValue())
+	return m
+}
+
+// editForm starts a form filled in from an existing Secret, saving back to
+// slug. policy is the Generator Policy this session currently holds, same as
+// newForm. Built fresh every time — the form must never be reused between
+// Secrets (docs/milestone-2.md).
+func editForm(policy generator.Options, slug string, s *secret.Secret) formModel {
+	title := textinput.New()
+	title.Placeholder = "title, e.g. Facebook"
+	title.CharLimit = 120
+	title.SetValue(s.Meta.Title)
+	title.Focus()
+
+	desc := textinput.New()
+	desc.Placeholder = "description (optional)"
+	desc.SetValue(s.Meta.Description)
+
+	tags := textinput.New()
+	tags.Placeholder = "tags, comma separated (optional)"
+	tags.SetValue(strings.Join(s.Meta.Tags, ", "))
+
+	rows := make([]fieldRow, 0, len(s.Fields))
+	for _, f := range s.Fields {
+		row := newFieldRow()
+		row.typeIndex = typeIndexFor(f.Type)
+		row.label.SetValue(f.Label)
+		row.setValue(f.Value)
+		row.syncEcho()
+		rows = append(rows, row)
+	}
+	if len(rows) == 0 {
+		row := newFieldRow()
+		row.syncEcho()
+		rows = append(rows, row)
+	}
+
+	m := formModel{title: title, description: desc, tags: tags, rows: rows, policy: policy, editSlug: slug}
+	m.initial, _ = secret.Marshal(m.secretValue())
+	return m
+}
+
+// typeIndexFor finds the row index secret.Types() uses for id, defaulting to
+// the first type when id is not registered.
+func typeIndexFor(id string) int {
+	for i, t := range secret.Types() {
+		if t.ID == id {
+			return i
+		}
+	}
+	return 0
+}
+
+// dirty reports whether the form no longer matches what it was built with.
+func (m formModel) dirty() bool {
+	cur, err := secret.Marshal(m.secretValue())
+	if err != nil {
+		return true
+	}
+	return string(cur) != string(m.initial)
 }
 
 func (m formModel) focusCount() int { return metaInputs + len(m.rows)*inputsPerRow }
@@ -378,8 +450,12 @@ func (m formModel) Update(msg tea.Msg) (formModel, tea.Cmd) {
 }
 
 func (m formModel) View(width int) string {
+	title := "New secret"
+	if m.editSlug != "" {
+		title = "Edit secret"
+	}
 	lines := []string{
-		styleTitle.Render("New secret"),
+		styleTitle.Render(title),
 		"",
 		labeled("Title", m.title.View(), m.focus == 0),
 		labeled("Description", m.description.View(), m.focus == 1),
@@ -411,7 +487,9 @@ func (m formModel) View(width int) string {
 			lines = append(lines, "")
 		}
 	}
-	if m.err != nil {
+	if m.confirmDiscard {
+		lines = append(lines, styleErr.Render("unsaved changes — press esc again to discard, any other key to keep editing"))
+	} else if m.err != nil {
 		lines = append(lines, styleErr.Render(m.err.Error()))
 	}
 	if m.genOpen {

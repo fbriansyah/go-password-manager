@@ -27,6 +27,7 @@ const (
 	screenUnlock screen = iota
 	screenList
 	screenForm
+	screenConfirmDelete
 )
 
 // entry is one Secret, decrypted into memory during Unlock.
@@ -66,6 +67,13 @@ type Model struct {
 	detail detailModel
 	form   formModel
 
+	// deleteSlug and deleteTitle name the Secret screenConfirmDelete is asking
+	// about; deleteIndex is where it sat in the list, so the selection can
+	// land on a neighbour once it is gone.
+	deleteSlug  string
+	deleteTitle string
+	deleteIndex int
+
 	status     string
 	statusErr  bool
 	clearsAt   time.Time
@@ -104,6 +112,13 @@ type (
 	createdMsg struct {
 		slug    string
 		secret  *secret.Secret
+		entries []entry
+	}
+	savedMsg struct {
+		slug    string
+		entries []entry
+	}
+	deletedMsg struct {
 		entries []entry
 	}
 	copiedMsg      struct{ label string }
@@ -164,6 +179,38 @@ func createCmd(store vault.Vault, s *secret.Secret) tea.Cmd {
 			return failedMsg{err}
 		}
 		return createdMsg{slug: slug, secret: s, entries: entries}
+	}
+}
+
+// saveCmd writes changes back to an existing Secret. If the title changed
+// the slug changes with it; Vault.Save handles the rename and the
+// slug-collision check (docs/milestone-2.md).
+func saveCmd(store vault.Vault, slug string, s *secret.Secret) tea.Cmd {
+	return func() tea.Msg {
+		newSlug, err := store.Save(slug, s)
+		if err != nil {
+			return failedMsg{err}
+		}
+		entries, _, err := loadAll(store)
+		if err != nil {
+			return failedMsg{err}
+		}
+		return savedMsg{slug: newSlug, entries: entries}
+	}
+}
+
+// deleteCmd removes a Secret outright; there is no undo, so this only ever
+// runs once the confirmation screen has been answered explicitly.
+func deleteCmd(store vault.Vault, slug string) tea.Cmd {
+	return func() tea.Msg {
+		if err := store.Delete(slug); err != nil {
+			return failedMsg{err}
+		}
+		entries, _, err := loadAll(store)
+		if err != nil {
+			return failedMsg{err}
+		}
+		return deletedMsg{entries: entries}
 	}
 }
 
@@ -229,6 +276,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.form.err = msg.err
 			return m, nil
 		}
+		if m.screen == screenConfirmDelete {
+			m.screen = screenList
+		}
 		m.setStatus(msg.err.Error(), true)
 		return m, nil
 
@@ -236,6 +286,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenList
 		m.setEntries(msg.entries, msg.slug)
 		m.setStatus("saved as "+msg.slug+vault.Ext, false)
+		m.layout()
+		return m, nil
+
+	case savedMsg:
+		m.screen = screenList
+		m.setEntries(msg.entries, msg.slug)
+		m.setStatus("saved as "+msg.slug+vault.Ext, false)
+		m.layout()
+		return m, nil
+
+	case deletedMsg:
+		m.screen = screenList
+		m.setEntriesNear(msg.entries, m.deleteIndex)
+		m.setStatus("deleted "+m.deleteTitle, false)
+		m.deleteSlug, m.deleteTitle = "", ""
 		m.layout()
 		return m, nil
 
@@ -290,8 +355,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.form.genOpen {
 			return m.handleGeneratorKey(msg)
 		}
+		if m.form.confirmDiscard {
+			if msg.Type == tea.KeyEsc {
+				m.screen = screenList
+				m.setStatus("", false)
+				return m, nil
+			}
+			m.form.confirmDiscard = false
+			return m, nil
+		}
 		switch {
 		case msg.Type == tea.KeyEsc:
+			if m.form.dirty() {
+				m.form.confirmDiscard = true
+				return m, nil
+			}
 			m.screen = screenList
 			m.setStatus("", false)
 			return m, nil
@@ -300,6 +378,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err := s.Validate(); err != nil {
 				m.form.err = err
 				return m, nil
+			}
+			if m.form.editSlug != "" {
+				return m, saveCmd(m.store, m.form.editSlug, s)
 			}
 			return m, createCmd(m.store, s)
 		case msg.Type == tea.KeyCtrlN:
@@ -328,6 +409,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.form, cmd = m.form.Update(msg)
 		return m, cmd
 
+	case screenConfirmDelete:
+		switch msg.String() {
+		case "y":
+			return m, deleteCmd(m.store, m.deleteSlug)
+		case "n", "esc":
+			m.screen = screenList
+			m.deleteSlug, m.deleteTitle = "", ""
+			return m, nil
+		}
+		return m, nil
+
 	default: // screenList
 		if m.list.FilterState() == list.Filtering {
 			var cmd tea.Cmd
@@ -342,6 +434,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.form = newForm(m.cfg.Generator)
 			m.screen = screenForm
 			m.setStatus("", false)
+			return m, nil
+		case "e":
+			s := m.current()
+			if s == nil {
+				return m, nil
+			}
+			m.form = editForm(m.cfg.Generator, m.currentSlug(), s)
+			m.screen = screenForm
+			m.setStatus("", false)
+			return m, nil
+		case "d":
+			s := m.current()
+			if s == nil {
+				return m, nil
+			}
+			m.deleteSlug = m.currentSlug()
+			m.deleteTitle = s.Meta.Title
+			m.deleteIndex = m.list.Index()
+			m.screen = screenConfirmDelete
 			return m, nil
 		case "tab":
 			m.detail.focused = !m.detail.focused
@@ -472,6 +583,27 @@ func (m *Model) setEntries(entries []entry, selectSlug string) {
 	m.detail.fieldIndex = 0
 }
 
+// setEntriesNear rebuilds the list after a delete and selects whatever now
+// sits at idx — the row the deleted Secret used to occupy — clamped to the
+// new, shorter list.
+func (m *Model) setEntriesNear(entries []entry, idx int) {
+	items := make([]list.Item, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, e)
+	}
+	m.list.SetItems(items)
+	if len(items) > 0 {
+		if idx >= len(items) {
+			idx = len(items) - 1
+		}
+		if idx < 0 {
+			idx = 0
+		}
+		m.list.Select(idx)
+	}
+	m.detail.fieldIndex = 0
+}
+
 func (m Model) current() *secret.Secret {
 	if it, ok := m.list.SelectedItem().(entry); ok {
 		return it.data
@@ -545,6 +677,8 @@ func (m Model) View() string {
 		return m.unlock.View(m.width)
 	case screenForm:
 		return m.form.View(m.width)
+	case screenConfirmDelete:
+		return m.confirmDeleteView()
 	}
 
 	listWidth := m.list.Width()
@@ -558,6 +692,19 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, body, m.statusLine())
 }
 
+// confirmDeleteView asks, plainly, before a Secret is gone for good — there
+// is no undo (docs/milestone-2.md).
+func (m Model) confirmDeleteView() string {
+	lines := []string{
+		styleTitle.Render("Delete secret"),
+		"",
+		"Delete " + styleValue.Render(m.deleteTitle) + "? This cannot be undone.",
+		"",
+		styleHelp.Render("y delete · n/esc cancel"),
+	}
+	return lipgloss.NewStyle().Padding(1, 2).Width(m.width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+}
+
 func (m Model) statusLine() string {
 	if m.status != "" {
 		if m.statusErr {
@@ -569,7 +716,7 @@ func (m Model) statusLine() string {
 		return styleOK.Render(fmt.Sprintf("copied to clipboard · cleared in %ds", int(left.Seconds()+0.5)))
 	}
 	if m.detail.focused {
-		return styleHelp.Render("j/k pick field · c copy · r reveal · esc back to list · q quit")
+		return styleHelp.Render("j/k pick field · c copy · r reveal · e edit · d delete · esc back to list · q quit")
 	}
-	return styleHelp.Render("↑/↓ pick · / search · tab to detail · n new · q quit")
+	return styleHelp.Render("↑/↓ pick · / search · tab to detail · n new · e edit · d delete · q quit")
 }

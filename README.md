@@ -82,6 +82,8 @@ the list on the left, the selected secret's fields on the right.
 | `/` | search title, description and tags |
 | `tab` | move focus to the detail pane |
 | `n` | new secret |
+| `e` | edit the selected secret |
+| `d` | delete the selected secret (asks first) |
 | `q` | quit |
 
 **Detail pane**
@@ -91,9 +93,25 @@ the list on the left, the selected secret's fields on the right.
 | `j` `k` | select a field |
 | `c` | copy the field to the clipboard (cleared after 30 seconds) |
 | `r` | reveal a hidden value |
+| `e` | edit the selected secret |
+| `d` | delete the selected secret (asks first) |
 | `esc` | back to the list |
 
-**New secret form**
+**Delete confirmation**
+
+| Key | Action |
+|---|---|
+| `y` | go ahead and delete |
+| `n` `esc` | cancel |
+
+Deleting is permanent — there is no undo, trash, or recovery.
+
+**New / edit secret form**
+
+`e` opens the same form `n` does, filled in with the selected secret; saving
+writes back to the same file. Changing the title renames the file — the old
+one is removed once the new one is written — and is refused with a message if
+another secret already has that title.
 
 | Key | Action |
 |---|---|
@@ -103,7 +121,7 @@ the list on the left, the selected secret's fields on the right.
 | `ctrl+d` | remove the focused field |
 | `ctrl+g` | open the generator panel (password fields only) |
 | `ctrl+s` | save |
-| `esc` | cancel |
+| `esc` | cancel; asks first when there are unsaved changes |
 
 Field types are `Text` (single line), `Password` (masked, generatable) and
 `Note` (multi-line).
@@ -179,6 +197,5 @@ decisions behind it in [docs/adr/](./docs/adr/).
 
 ## Status
 
-Working today: `init`, unlock, list and search, view and copy fields, create
-new secrets with a configurable password generator. Editing and deleting
-existing secrets are not implemented yet.
+Working today: `init`, unlock, list and search, view and copy fields, create,
+edit and delete secrets, all with a configurable password generator.

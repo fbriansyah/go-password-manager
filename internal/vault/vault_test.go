@@ -199,6 +199,57 @@ func TestWriteAtomicLeavesNoLeftovers(t *testing.T) {
 	}
 }
 
+func TestEditThenDelete(t *testing.T) {
+	for name, v := range vaults(t) {
+		t.Run(name, func(t *testing.T) {
+			slug, err := v.Create(facebook())
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			s := facebook()
+			s.Fields[1].Value = "rotated-value"
+			newSlug, err := v.Save(slug, s)
+			if err != nil {
+				t.Fatalf("Save: %v", err)
+			}
+			if newSlug != slug {
+				t.Fatalf("slug changed on a value-only edit: %q -> %q", slug, newSlug)
+			}
+			got, err := v.Load(newSlug)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got.Fields[1].Value != "rotated-value" {
+				t.Fatalf("edit did not persist: %+v", got.Fields[1])
+			}
+
+			if err := v.Delete(newSlug); err != nil {
+				t.Fatalf("Delete: %v", err)
+			}
+			if _, err := v.Load(newSlug); !errors.Is(err, vault.ErrNotFound) {
+				t.Fatalf("err = %v, want ErrNotFound after delete", err)
+			}
+			list, err := v.List()
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(list) != 0 {
+				t.Fatalf("List = %v, want empty after delete", list)
+			}
+		})
+	}
+}
+
+func TestDeleteASecretThatDoesNotExist(t *testing.T) {
+	for name, v := range vaults(t) {
+		t.Run(name, func(t *testing.T) {
+			if err := v.Delete("no-such-secret"); !errors.Is(err, vault.ErrNotFound) {
+				t.Fatalf("err = %v, want ErrNotFound", err)
+			}
+		})
+	}
+}
+
 func TestSlug(t *testing.T) {
 	cases := map[string]string{
 		"Facebook":           "facebook",
