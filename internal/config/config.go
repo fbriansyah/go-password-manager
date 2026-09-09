@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
+
+	"github.com/fbriansyah/go-password-manager/internal/generator"
 )
 
 // Configuration file names. The override is looked for in the selected Vault
@@ -25,6 +28,8 @@ type Config struct {
 	PrivateKeyPath string
 	// PublicKeyPath is where the Recipient lives (public key).
 	PublicKeyPath string
+	// Generator is the Generator Policy this session starts from (docs/adr/0005).
+	Generator generator.Options
 	// Source names the file that last filled in the values above.
 	Source string
 }
@@ -60,7 +65,7 @@ func Load(vaultDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	var cfg Config
+	cfg := Config{Generator: generator.Default()}
 	globalPath := filepath.Join(dir, GlobalName)
 	found := false
 
@@ -98,6 +103,81 @@ func Write(path string, cfg Config) error {
 	return nil
 }
 
+// Generator Policy keys. Flat and SCREAMING_SNAKE, like the two key paths
+// above them, so one merge rule covers the whole file (docs/adr/0005).
+const (
+	keyGeneratorLength  = "GENERATOR_LENGTH"
+	keyGeneratorUpper   = "GENERATOR_UPPER"
+	keyGeneratorDigits  = "GENERATOR_DIGITS"
+	keyGeneratorSymbols = "GENERATOR_SYMBOLS"
+)
+
+// UpdateGenerator saves a Generator Policy into the configuration at path, in
+// place: a line for a key that is already there is replaced where it stands,
+// a key that is missing is appended, and everything else in the file —
+// comments, blank lines, keys this package does not know about — is left
+// untouched. The file is created if it does not exist yet.
+func UpdateGenerator(path string, o generator.Options) error {
+	return updateLines(path, []line{
+		{keyGeneratorLength, strconv.Itoa(o.Length)},
+		{keyGeneratorUpper, strconv.FormatBool(o.Upper)},
+		{keyGeneratorDigits, strconv.FormatBool(o.Digits)},
+		{keyGeneratorSymbols, strconv.FormatBool(o.Symbols)},
+	})
+}
+
+// line is one key/value pair to place in a configuration file. The value is
+// written verbatim, so it must already be the text the file should show.
+type line struct {
+	key   string
+	value string
+}
+
+func updateLines(path string, lines []line) error {
+	var body []string
+	if raw, err := os.ReadFile(path); err == nil {
+		body = strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+		if len(body) == 1 && body[0] == "" {
+			body = nil
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("could not read %s: %w", path, err)
+	}
+
+	for _, l := range lines {
+		rendered := fmt.Sprintf("%s: %s", l.key, l.value)
+		replaced := false
+		for i, existing := range body {
+			if lineKey(existing) == l.key {
+				body[i] = rendered
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			body = append(body, rendered)
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("could not create the configuration folder: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(body, "\n")+"\n"), 0o600); err != nil {
+		return fmt.Errorf("could not write %s: %w", path, err)
+	}
+	return nil
+}
+
+// lineKey extracts the key from one line of the file, so updateLines can find
+// where a key already lives without parsing the file as YAML.
+func lineKey(l string) string {
+	i := strings.Index(l, ":")
+	if i < 0 {
+		return ""
+	}
+	return strings.TrimSpace(l[:i])
+}
+
 func merge(path string, cfg *Config) error {
 	if _, err := os.Stat(path); err != nil {
 		return err
@@ -112,6 +192,21 @@ func merge(path string, cfg *Config) error {
 	}
 	if s := expand(v.GetString("PUBLIC_KEY_PATH")); s != "" {
 		cfg.PublicKeyPath = s
+	}
+	// A boolean read from an absent key is indistinguishable from one written
+	// as false, so absence must be tested with IsSet rather than a zero check
+	// (docs/adr/0005).
+	if v.IsSet(keyGeneratorLength) {
+		cfg.Generator.Length = v.GetInt(keyGeneratorLength)
+	}
+	if v.IsSet(keyGeneratorUpper) {
+		cfg.Generator.Upper = v.GetBool(keyGeneratorUpper)
+	}
+	if v.IsSet(keyGeneratorDigits) {
+		cfg.Generator.Digits = v.GetBool(keyGeneratorDigits)
+	}
+	if v.IsSet(keyGeneratorSymbols) {
+		cfg.Generator.Symbols = v.GetBool(keyGeneratorSymbols)
 	}
 	cfg.Source = path
 	return nil
