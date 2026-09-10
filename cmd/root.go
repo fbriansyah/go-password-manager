@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/fbriansyah/go-password-manager/internal/config"
@@ -76,7 +76,7 @@ func runTUI(cmd *cobra.Command, _ []string) error {
 	if _, err := os.Stat(cfg.PrivateKeyPath); err != nil {
 		return fmt.Errorf("identity at %s cannot be opened: %w", cfg.PrivateKeyPath, err)
 	}
-	p := tea.NewProgram(tui.New(dir, cfg), tea.WithAltScreen())
+	p := tea.NewProgram(tui.New(dir, cfg))
 	_, err = p.Run()
 	return err
 }

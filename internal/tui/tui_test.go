@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/fbriansyah/go-password-manager/internal/config"
 	"github.com/fbriansyah/go-password-manager/internal/crypto"
@@ -49,12 +49,51 @@ func unlocked(t *testing.T) Model {
 	// never opened onto the zero value.
 	m := New(vaultDir, config.Config{PrivateKeyPath: idPath, PublicKeyPath: recPath, Generator: generator.Default()})
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 32})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(testPassword)})
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = update(t, m, text(testPassword))
+	m = run(t, m, key("enter"))
 	if m.screen != screenList {
 		t.Fatalf("screen = %v, want screenList", m.screen)
 	}
 	return m
+}
+
+// key builds the tea.KeyPressMsg for one of the named keys this test suite
+// presses. Bubble Tea v2 dropped the v1 tea.KeyMsg.Type enum, so tests build
+// the Code/Mod pair the real key would carry.
+func key(name string) tea.KeyPressMsg {
+	switch name {
+	case "enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
+	case "esc":
+		return tea.KeyPressMsg{Code: tea.KeyEsc}
+	case "tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "up":
+		return tea.KeyPressMsg{Code: tea.KeyUp}
+	case "down":
+		return tea.KeyPressMsg{Code: tea.KeyDown}
+	case "left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "right":
+		return tea.KeyPressMsg{Code: tea.KeyRight}
+	case "backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace}
+	case "ctrl+g":
+		return tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
+	case "ctrl+r":
+		return tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
+	case "ctrl+s":
+		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
+	}
+	panic("key: unknown key name " + name)
+}
+
+// text builds the tea.KeyPressMsg a normal typed rune (or run of runes, for
+// convenience) arrives as in v2 — Code holds the first rune, Text the string
+// widgets actually insert.
+func text(s string) tea.KeyPressMsg {
+	r := []rune(s)
+	return tea.KeyPressMsg{Code: r[0], Text: s}
 }
 
 // update sends one message and ignores the command it produces.
@@ -86,7 +125,7 @@ func TestUnlockLoadsTheSecretList(t *testing.T) {
 	if len(m.list.Items()) != 1 {
 		t.Fatalf("item count = %d, want 1", len(m.list.Items()))
 	}
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "Facebook") {
 		t.Fatalf("the title is not on screen:\n%s", view)
 	}
@@ -99,54 +138,54 @@ func TestWrongPasswordStaysOnUnlockScreen(t *testing.T) {
 	m := unlocked(t)
 	m.screen = screenUnlock
 	m.unlock = newUnlock(m.vaultDir)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("very-wrong")})
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = update(t, m, text("very-wrong"))
+	m = run(t, m, key("enter"))
 	if m.screen != screenUnlock {
 		t.Fatal("a wrong password must not open the vault")
 	}
 	if m.unlock.err == nil {
 		t.Fatal("want an error message on the unlock screen")
 	}
-	if strings.Contains(m.View(), "very-wrong") {
+	if strings.Contains(m.View().Content, "very-wrong") {
 		t.Fatal("the typed password is visible on screen")
 	}
 }
 
 func TestPasswordStaysHiddenUntilR(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // focus the detail pane
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}) // move to the Password field
-	if strings.Contains(m.View(), "s3cret-value") {
+	m = update(t, m, key("tab")) // focus the detail pane
+	m = update(t, m, text("j"))  // move to the Password field
+	if strings.Contains(m.View().Content, "s3cret-value") {
 		t.Fatal("the password is shown without being asked for")
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
-	if !strings.Contains(m.View(), "s3cret-value") {
-		t.Fatalf("r did not reveal the value:\n%s", m.View())
+	m = update(t, m, text("r"))
+	if !strings.Contains(m.View().Content, "s3cret-value") {
+		t.Fatalf("r did not reveal the value:\n%s", m.View().Content)
 	}
 	// Moving to another field hides the value that was revealed.
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	if strings.Contains(m.View(), "s3cret-value") {
+	m = update(t, m, text("k"))
+	if strings.Contains(m.View().Content, "s3cret-value") {
 		t.Fatal("the value stayed revealed after moving to another field")
 	}
 }
 
 func TestCreateNewSecretThroughTheForm(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = update(t, m, text("n"))
 	if m.screen != screenForm {
 		t.Fatalf("screen = %v, want screenForm", m.screen)
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Gmail")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // description
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // tags
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // label of the first field
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Password")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRight}) // tx -> ps
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})   // value
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlG}) // open the generator panel
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // accept the candidate shown
+	m = update(t, m, text("Gmail"))
+	m = update(t, m, key("tab")) // description
+	m = update(t, m, key("tab")) // tags
+	m = update(t, m, key("tab")) // label of the first field
+	m = update(t, m, text("Password"))
+	m = update(t, m, key("right"))  // tx -> ps
+	m = update(t, m, key("tab"))    // value
+	m = update(t, m, key("ctrl+g")) // open the generator panel
+	m = update(t, m, key("enter"))  // accept the candidate shown
 
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = run(t, m, key("ctrl+s"))
 	if m.screen != screenList {
 		t.Fatalf("screen = %v after saving, want screenList (err: %v)", m.screen, m.form.err)
 	}
@@ -167,8 +206,8 @@ func TestCreateNewSecretThroughTheForm(t *testing.T) {
 
 func TestFormRefusesASecretWithoutATitle(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = update(t, m, text("n"))
+	m = run(t, m, key("ctrl+s"))
 	if m.screen != screenForm {
 		t.Fatal("a form without a title must not be saved")
 	}
@@ -181,12 +220,12 @@ func TestFormRefusesASecretWithoutATitle(t *testing.T) {
 // it — instead it reports why, on the same err path a bad save uses.
 func TestGeneratorPanelRefusesANonGeneratableField(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // description
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // tags
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // label of the first field ("tx" by default)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // value
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlG})
+	m = update(t, m, text("n"))
+	m = update(t, m, key("tab")) // description
+	m = update(t, m, key("tab")) // tags
+	m = update(t, m, key("tab")) // label of the first field ("tx" by default)
+	m = update(t, m, key("tab")) // value
+	m = update(t, m, key("ctrl+g"))
 	if m.form.genOpen {
 		t.Fatal("the panel opened on a field type the generator cannot fill")
 	}
@@ -198,19 +237,19 @@ func TestGeneratorPanelRefusesANonGeneratableField(t *testing.T) {
 // esc leaves the Field exactly as it was, even after knobs were changed.
 func TestGeneratorPanelEscLeavesFieldUntouched(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})   // description
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})   // tags
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})   // label
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRight}) // tx -> ps
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})   // value
+	m = update(t, m, text("n"))
+	m = update(t, m, key("tab"))   // description
+	m = update(t, m, key("tab"))   // tags
+	m = update(t, m, key("tab"))   // label
+	m = update(t, m, key("right")) // tx -> ps
+	m = update(t, m, key("tab"))   // value
 
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlG})
+	m = update(t, m, key("ctrl+g"))
 	if !m.form.genOpen {
 		t.Fatal("the panel did not open on a generatable field")
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyLeft}) // turn the length knob down
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m = update(t, m, key("left")) // turn the length knob down
+	m = update(t, m, key("esc"))
 
 	if m.form.genOpen {
 		t.Fatal("esc did not close the panel")
@@ -224,19 +263,19 @@ func TestGeneratorPanelEscLeavesFieldUntouched(t *testing.T) {
 // off the symbols and turns down the length, both honoured in the result.
 func TestGeneratorPanelEnterAcceptsTheKnobsChosen(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRight}) // tx -> ps
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})   // value
+	m = update(t, m, text("n"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("right")) // tx -> ps
+	m = update(t, m, key("tab"))   // value
 
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlG})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown})  // knob: upper
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown})  // knob: digits
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown})  // knob: symbols
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyLeft})  // symbols off
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // accept
+	m = update(t, m, key("ctrl+g"))
+	m = update(t, m, key("down"))  // knob: upper
+	m = update(t, m, key("down"))  // knob: digits
+	m = update(t, m, key("down"))  // knob: symbols
+	m = update(t, m, key("left"))  // symbols off
+	m = update(t, m, key("enter")) // accept
 
 	if m.form.genOpen {
 		t.Fatal("enter did not close the panel")
@@ -257,22 +296,22 @@ func TestGeneratorPanelEnterAcceptsTheKnobsChosen(t *testing.T) {
 // even without an explicit save: the next form to open starts from it.
 func TestGeneratorPolicyStaysForTheSession(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRight}) // tx -> ps
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})   // value
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlG})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown}) // upper
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown}) // digits
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown}) // symbols
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyLeft})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc}) // close without accepting the field
+	m = update(t, m, text("n"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("right")) // tx -> ps
+	m = update(t, m, key("tab"))   // value
+	m = update(t, m, key("ctrl+g"))
+	m = update(t, m, key("down")) // upper
+	m = update(t, m, key("down")) // digits
+	m = update(t, m, key("down")) // symbols
+	m = update(t, m, key("left"))
+	m = update(t, m, key("esc")) // close without accepting the field
 
 	// Leave the form and start a fresh one, as the "n" key does after any save.
 	m.screen = screenList
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = update(t, m, text("n"))
 	if m.form.policy.Symbols {
 		t.Fatal("the next form did not inherit the session's Policy change")
 	}
@@ -280,7 +319,7 @@ func TestGeneratorPolicyStaysForTheSession(t *testing.T) {
 
 func TestEditFormChangesAValueInPlace(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	m = update(t, m, text("e"))
 	if m.screen != screenForm {
 		t.Fatalf("screen = %v, want screenForm", m.screen)
 	}
@@ -291,17 +330,17 @@ func TestEditFormChangesAValueInPlace(t *testing.T) {
 		t.Fatalf("title = %q, want the existing title", m.form.title.Value())
 	}
 
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // description
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // tags
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // label of the first field
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab}) // value of the first field
+	m = update(t, m, key("tab")) // description
+	m = update(t, m, key("tab")) // tags
+	m = update(t, m, key("tab")) // label of the first field
+	m = update(t, m, key("tab")) // value of the first field
 	// clear the existing username and type a new one
 	for range "user@mail.com" {
-		m = update(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+		m = update(t, m, key("backspace"))
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("new@mail.com")})
+	m = update(t, m, text("new@mail.com"))
 
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = run(t, m, key("ctrl+s"))
 	if m.screen != screenList {
 		t.Fatalf("screen = %v after saving, want screenList (err: %v)", m.screen, m.form.err)
 	}
@@ -319,12 +358,12 @@ func TestEditFormChangesAValueInPlace(t *testing.T) {
 
 func TestEditFormRenamesOnTitleChange(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	m = update(t, m, text("e"))
 	for range "Facebook" {
-		m = update(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+		m = update(t, m, key("backspace"))
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Meta")})
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = update(t, m, text("Meta"))
+	m = run(t, m, key("ctrl+s"))
 	if m.screen != screenList {
 		t.Fatalf("screen = %v after saving, want screenList (err: %v)", m.screen, m.form.err)
 	}
@@ -350,12 +389,12 @@ func TestEditFormRefusesARenameThatCollides(t *testing.T) {
 		t.Fatalf("Create Gmail: %v", err)
 	}
 
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}) // edit Facebook
+	m = update(t, m, text("e")) // edit Facebook
 	for range "Facebook" {
-		m = update(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+		m = update(t, m, key("backspace"))
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Gmail")})
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = update(t, m, text("Gmail"))
+	m = run(t, m, key("ctrl+s"))
 	if m.screen != screenForm {
 		t.Fatal("a colliding rename must not be saved")
 	}
@@ -369,8 +408,8 @@ func TestEditFormRefusesARenameThatCollides(t *testing.T) {
 
 func TestEscOnAnUntouchedEditFormCancelsImmediately(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m = update(t, m, text("e"))
+	m = update(t, m, key("esc"))
 	if m.screen != screenList {
 		t.Fatalf("screen = %v, want screenList — esc on an untouched form should not ask", m.screen)
 	}
@@ -378,9 +417,9 @@ func TestEscOnAnUntouchedEditFormCancelsImmediately(t *testing.T) {
 
 func TestEscOnADirtyEditFormAsksFirst(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}) // dirty the title
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m = update(t, m, text("e"))
+	m = update(t, m, text("x")) // dirty the title
+	m = update(t, m, key("esc"))
 	if m.screen != screenForm {
 		t.Fatal("the first esc on a dirty form must ask before discarding")
 	}
@@ -389,7 +428,7 @@ func TestEscOnADirtyEditFormAsksFirst(t *testing.T) {
 	}
 
 	// Any other key cancels the discard and returns to editing.
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = update(t, m, text("y"))
 	if m.form.confirmDiscard {
 		t.Fatal("a non-esc key should cancel the pending discard")
 	}
@@ -398,11 +437,11 @@ func TestEscOnADirtyEditFormAsksFirst(t *testing.T) {
 	}
 
 	// A second esc actually discards.
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m = update(t, m, key("esc"))
 	if m.screen != screenForm {
 		t.Fatal("esc must ask again on the still-dirty form")
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m = update(t, m, key("esc"))
 	if m.screen != screenList {
 		t.Fatal("the second esc did not discard the form")
 	}
@@ -417,11 +456,11 @@ func TestEscOnADirtyEditFormAsksFirst(t *testing.T) {
 
 func TestDeleteRemovesTheSecretAfterConfirmation(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m = update(t, m, text("d"))
 	if m.screen != screenConfirmDelete {
 		t.Fatalf("screen = %v, want screenConfirmDelete", m.screen)
 	}
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = run(t, m, text("y"))
 	if m.screen != screenList {
 		t.Fatalf("screen = %v after confirming, want screenList", m.screen)
 	}
@@ -435,8 +474,8 @@ func TestDeleteRemovesTheSecretAfterConfirmation(t *testing.T) {
 
 func TestCancellingDeleteTouchesNothing(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = update(t, m, text("d"))
+	m = update(t, m, text("n"))
 	if m.screen != screenList {
 		t.Fatalf("screen = %v after cancelling, want screenList", m.screen)
 	}
@@ -450,36 +489,36 @@ func TestCancellingDeleteTouchesNothing(t *testing.T) {
 
 func TestCtrlRRevealsAPasswordValueInTheForm(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}) // edit Facebook
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // description
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // tags
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // label of the second field (Password)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // value of the first field (Username)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // label of the second field
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // value of the second field (Password)
+	m = update(t, m, text("e"))  // edit Facebook
+	m = update(t, m, key("tab")) // description
+	m = update(t, m, key("tab")) // tags
+	m = update(t, m, key("tab")) // label of the second field (Password)
+	m = update(t, m, key("tab")) // value of the first field (Username)
+	m = update(t, m, key("tab")) // label of the second field
+	m = update(t, m, key("tab")) // value of the second field (Password)
 
-	if strings.Contains(m.View(), "s3cret-value") {
+	if strings.Contains(m.View().Content, "s3cret-value") {
 		t.Fatal("the value is shown before ctrl+r is pressed")
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlR})
-	if !strings.Contains(m.View(), "s3cret-value") {
-		t.Fatalf("ctrl+r did not reveal the value:\n%s", m.View())
+	m = update(t, m, key("ctrl+r"))
+	if !strings.Contains(m.View().Content, "s3cret-value") {
+		t.Fatalf("ctrl+r did not reveal the value:\n%s", m.View().Content)
 	}
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlR})
-	if strings.Contains(m.View(), "s3cret-value") {
+	m = update(t, m, key("ctrl+r"))
+	if strings.Contains(m.View().Content, "s3cret-value") {
 		t.Fatal("a second ctrl+r did not hide the value again")
 	}
 }
 
 func TestCtrlRDoesNothingOnANonMaskedField(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")}) // edit Facebook
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // description
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // tags
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // label of the first field (Username, "tx")
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})                       // value of the first field
+	m = update(t, m, text("e"))  // edit Facebook
+	m = update(t, m, key("tab")) // description
+	m = update(t, m, key("tab")) // tags
+	m = update(t, m, key("tab")) // label of the first field (Username, "tx")
+	m = update(t, m, key("tab")) // value of the first field
 
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = update(t, m, key("ctrl+r"))
 	if m.form.rows[0].reveal {
 		t.Fatal("ctrl+r toggled reveal on a field type that is never masked")
 	}
@@ -487,9 +526,9 @@ func TestCtrlRDoesNothingOnANonMaskedField(t *testing.T) {
 
 func TestDuplicateTitleIsRefusedWithAClearMessage(t *testing.T) {
 	m := unlocked(t)
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Facebook")})
-	m = run(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = update(t, m, text("n"))
+	m = update(t, m, text("Facebook"))
+	m = run(t, m, key("ctrl+s"))
 	if m.screen != screenForm {
 		t.Fatal("a duplicate title must not be saved")
 	}

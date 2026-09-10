@@ -1,13 +1,16 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
+)
 
 var (
-	colorAccent = lipgloss.AdaptiveColor{Light: "#5A3FD4", Dark: "#B4A2FF"}
-	colorMuted  = lipgloss.AdaptiveColor{Light: "#6B6B76", Dark: "#8A8A96"}
-	colorErr    = lipgloss.AdaptiveColor{Light: "#B3261E", Dark: "#FF8A80"}
-	colorOK     = lipgloss.AdaptiveColor{Light: "#1B6B3A", Dark: "#7BE3A0"}
-	colorLine   = lipgloss.AdaptiveColor{Light: "#D5D5DD", Dark: "#3C3C46"}
+	colorAccent = compat.AdaptiveColor{Light: lipgloss.Color("#5A3FD4"), Dark: lipgloss.Color("#B4A2FF")}
+	colorMuted  = compat.AdaptiveColor{Light: lipgloss.Color("#6B6B76"), Dark: lipgloss.Color("#8A8A96")}
+	colorErr    = compat.AdaptiveColor{Light: lipgloss.Color("#B3261E"), Dark: lipgloss.Color("#FF8A80")}
+	colorOK     = compat.AdaptiveColor{Light: lipgloss.Color("#1B6B3A"), Dark: lipgloss.Color("#7BE3A0")}
+	colorLine   = compat.AdaptiveColor{Light: lipgloss.Color("#D5D5DD"), Dark: lipgloss.Color("#3C3C46")}
 
 	styleTitle   = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
 	styleMuted   = lipgloss.NewStyle().Foreground(colorMuted)
