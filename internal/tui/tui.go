@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/fbriansyah/go-password-manager/internal/clipboard"
 	"github.com/fbriansyah/go-password-manager/internal/config"
@@ -98,7 +98,7 @@ func New(vaultDir string, cfg config.Config) Model {
 	}
 }
 
-func (m Model) Init() tea.Cmd { return tea.Batch(tea.SetWindowTitle("gopm"), textinput.Blink) }
+func (m Model) Init() tea.Cmd { return textinput.Blink }
 
 // Internal messages.
 type (
@@ -320,21 +320,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clearsAt = time.Time{}
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	}
 
 	return m.delegate(msg)
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case screenUnlock:
-		switch msg.Type {
-		case tea.KeyEsc, tea.KeyCtrlC:
+		switch msg.String() {
+		case "esc", "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
-		case tea.KeyEnter:
+		case "enter":
 			if m.unlock.busy {
 				return m, nil
 			}
@@ -356,7 +356,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handleGeneratorKey(msg)
 		}
 		if m.form.confirmDiscard {
-			if msg.Type == tea.KeyEsc {
+			if msg.String() == "esc" {
 				m.screen = screenList
 				m.setStatus("", false)
 				return m, nil
@@ -365,7 +365,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch {
-		case msg.Type == tea.KeyEsc:
+		case msg.String() == "esc":
 			if m.form.dirty() {
 				m.form.confirmDiscard = true
 				return m, nil
@@ -373,7 +373,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenList
 			m.setStatus("", false)
 			return m, nil
-		case msg.Type == tea.KeyCtrlS:
+		case msg.String() == "ctrl+s":
 			s := m.form.secretValue()
 			if err := s.Validate(); err != nil {
 				m.form.err = err
@@ -383,28 +383,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, saveCmd(m.store, m.form.editSlug, s)
 			}
 			return m, createCmd(m.store, s)
-		case msg.Type == tea.KeyCtrlN:
+		case msg.String() == "ctrl+n":
 			m.form.addRow()
 			return m, nil
-		case msg.Type == tea.KeyCtrlD:
+		case msg.String() == "ctrl+d":
 			m.form.removeRow()
 			return m, nil
-		case msg.Type == tea.KeyCtrlG:
+		case msg.String() == "ctrl+g":
 			m.form.openGenerator()
 			return m, nil
-		case msg.Type == tea.KeyCtrlR:
+		case msg.String() == "ctrl+r":
 			m.form.toggleReveal()
 			return m, nil
-		case msg.Type == tea.KeyTab, msg.Type == tea.KeyDown && m.formNavigable():
+		case msg.String() == "tab", msg.String() == "down" && m.formNavigable():
 			m.form.moveFocus(1)
 			return m, nil
-		case msg.Type == tea.KeyShiftTab, msg.Type == tea.KeyUp && m.formNavigable():
+		case msg.String() == "shift+tab", msg.String() == "up" && m.formNavigable():
 			m.form.moveFocus(-1)
 			return m, nil
-		case msg.Type == tea.KeyLeft && m.form.focus >= metaInputs && m.formTypeCycle():
+		case msg.String() == "left" && m.form.focus >= metaInputs && m.formTypeCycle():
 			m.form.cycleType(-1)
 			return m, nil
-		case msg.Type == tea.KeyRight && m.form.focus >= metaInputs && m.formTypeCycle():
+		case msg.String() == "right" && m.form.focus >= metaInputs && m.formTypeCycle():
 			m.form.cycleType(1)
 			return m, nil
 		}
@@ -504,42 +504,39 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // keeps them from reaching the field rows underneath, and from the form-level
 // bindings they would otherwise collide with — ctrl+s here saves the Policy,
 // not the Secret.
-func (m Model) handleGeneratorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc:
+func (m Model) handleGeneratorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
 		m.form.closeGenerator()
 		m.cfg.Generator = m.form.policy
 		return m, nil
-	case tea.KeyEnter:
+	case "enter":
 		m.form.acceptGenerator()
 		m.cfg.Generator = m.form.policy
 		return m, nil
-	case tea.KeyUp:
+	case "up":
 		m.form.moveGenKnob(-1)
 		return m, nil
-	case tea.KeyDown:
+	case "down":
 		m.form.moveGenKnob(1)
 		return m, nil
-	case tea.KeyLeft:
+	case "left":
 		m.form.adjustGenKnob(-1)
 		return m, nil
-	case tea.KeyRight:
+	case "right":
 		m.form.adjustGenKnob(1)
 		return m, nil
-	case tea.KeyCtrlS:
+	case "ctrl+s":
 		m.cfg.Generator = m.form.policy
 		return m, saveGeneratorCmd(m.cfg.Generator)
-	case tea.KeyRunes:
-		if msg.String() == "r" {
-			m.form.rerollGenerator()
-			return m, nil
-		}
-		for _, r := range msg.Runes {
-			if r >= '0' && r <= '9' {
-				m.form.typeLength(r)
-			}
-		}
+	case "r":
+		m.form.rerollGenerator()
 		return m, nil
+	}
+	for _, r := range msg.Text {
+		if r >= '0' && r <= '9' {
+			m.form.typeLength(r)
+		}
 	}
 	return m, nil
 }
@@ -668,7 +665,14 @@ func (m *Model) layout() {
 	m.list.SetSize(listWidth, bodyHeight)
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
+	v := tea.NewView(m.content())
+	v.AltScreen = true
+	v.WindowTitle = "gopm"
+	return v
+}
+
+func (m Model) content() string {
 	if m.quitting {
 		return ""
 	}
