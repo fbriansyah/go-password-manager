@@ -124,6 +124,11 @@ another secret already has that title.
 | `ctrl+s` | save |
 | `esc` | cancel; asks first when there are unsaved changes |
 
+On macOS Command works as well as ctrl — ⌘N, ⌘D, ⌘G, ⌘R, ⌘S — but only in a
+terminal that forwards it (Ghostty, Kitty, WezTerm). Terminal.app and iTerm2
+keep Command for themselves, so ctrl is always the binding that works, and the
+help line shows both as `⌘/^s`. `ctrl+c` is ctrl everywhere: ⌘C stays copy.
+
 Field types are `Text` (single line), `Password` (masked, generatable) and
 `Note` (multi-line).
 
@@ -141,6 +146,8 @@ to the four knobs that shape it — this is the Generator Policy.
 | `enter` | accept the candidate shown |
 | `ctrl+s` | save the current knobs to `config.yaml` as the default |
 | `esc` | close without touching the field |
+
+⌘S saves the default here too, on the same terms as above.
 
 A Policy changed in the panel stays in effect for the rest of the session even
 without saving; `ctrl+s` is only for making it the default the next time gopm

@@ -84,6 +84,12 @@ func key(name string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
 	case "ctrl+s":
 		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
+	case "super+s":
+		return tea.KeyPressMsg{Code: 's', Mod: tea.ModSuper}
+	case "super+g":
+		return tea.KeyPressMsg{Code: 'g', Mod: tea.ModSuper}
+	case "super+c":
+		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModSuper}
 	}
 	panic("key: unknown key name " + name)
 }
