@@ -516,10 +516,11 @@ func (m formModel) View(width int) string {
 	}
 	if m.genOpen {
 		lines = append(lines, styleHelp.Render(
-			"↑/↓ knob · ←/→ change · digits length · r reroll · enter accept · ctrl+s save default · esc cancel"))
+			"↑/↓ knob · ←/→ change · digits length · r reroll · enter accept · "+modLabel()+"s save default · esc cancel"))
 	} else {
+		mod := modLabel()
 		lines = append(lines, styleHelp.Render(
-			"tab move · ←/→ change type · ctrl+n add field · ctrl+d remove field · ctrl+g generate · ctrl+r reveal value · ctrl+s save · esc cancel"))
+			"tab move · ←/→ change type · "+mod+"n add field · "+mod+"d remove field · "+mod+"g generate · "+mod+"r reveal value · "+mod+"s save · esc cancel"))
 	}
 	return lipgloss.NewStyle().Padding(1, 2).Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
