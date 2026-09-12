@@ -542,3 +542,84 @@ func TestDuplicateTitleIsRefusedWithAClearMessage(t *testing.T) {
 		t.Fatalf("the error message does not explain the collision: %v", m.form.err)
 	}
 }
+
+// ? opens Help from the list; ? or esc closes it and lands back on the list.
+func TestQuestionMarkOpensHelpFromTheList(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, text("?"))
+	if m.screen != screenHelp {
+		t.Fatalf("screen = %v, want screenHelp", m.screen)
+	}
+	m = update(t, m, text("?"))
+	if m.screen != screenList {
+		t.Fatalf("second ? left screen = %v, want screenList", m.screen)
+	}
+	m = update(t, m, text("?"))
+	m = update(t, m, key("esc"))
+	if m.screen != screenList {
+		t.Fatalf("esc left screen = %v, want screenList", m.screen)
+	}
+}
+
+// Help is modal: a key that would act on the list underneath does nothing
+// while Help is showing, so reading "d delete" cannot delete anything.
+func TestHelpIgnoresOtherKeys(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, text("?"))
+	for _, k := range []tea.KeyPressMsg{text("d"), text("n"), text("q"), key("tab")} {
+		m = update(t, m, k)
+		if m.screen != screenHelp {
+			t.Fatalf("%q left Help: screen = %v", k.String(), m.screen)
+		}
+	}
+}
+
+// ? inside a search must stay a search character.
+func TestQuestionMarkWhileFilteringIsASearchCharacter(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, text("/"))
+	m = update(t, m, text("?"))
+	if m.screen != screenList {
+		t.Fatalf("screen = %v, want screenList", m.screen)
+	}
+	if got := m.list.FilterValue(); got != "?" {
+		t.Fatalf("filter = %q, want %q", got, "?")
+	}
+}
+
+// Help from the generator panel returns to the form with the panel still open.
+func TestHelpFromTheGeneratorReturnsToThePanel(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, text("n"))
+	m = update(t, m, key("tab"))   // description
+	m = update(t, m, key("tab"))   // tags
+	m = update(t, m, key("tab"))   // label
+	m = update(t, m, key("right")) // tx -> ps
+	m = update(t, m, key("tab"))   // value
+	m = update(t, m, key("ctrl+g"))
+	if !m.form.genOpen {
+		t.Fatal("the panel did not open")
+	}
+
+	m = update(t, m, text("?"))
+	if m.screen != screenHelp {
+		t.Fatalf("screen = %v, want screenHelp", m.screen)
+	}
+	m = update(t, m, key("esc"))
+	if m.screen != screenForm || !m.form.genOpen {
+		t.Fatalf("esc landed on screen %v with genOpen=%v; want the open panel", m.screen, m.form.genOpen)
+	}
+}
+
+// ? in the form is a character the user is typing, never Help.
+func TestQuestionMarkInTheFormIsTyped(t *testing.T) {
+	m := unlocked(t)
+	m = update(t, m, text("n"))
+	m = update(t, m, text("?"))
+	if m.screen != screenForm {
+		t.Fatalf("screen = %v, want screenForm", m.screen)
+	}
+	if got := m.form.title.Value(); got != "?" {
+		t.Fatalf("title = %q, want %q", got, "?")
+	}
+}

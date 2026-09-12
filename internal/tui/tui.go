@@ -28,6 +28,7 @@ const (
 	screenList
 	screenForm
 	screenConfirmDelete
+	screenHelp
 )
 
 // entry is one Secret, decrypted into memory during Unlock.
@@ -73,6 +74,10 @@ type Model struct {
 	deleteSlug  string
 	deleteTitle string
 	deleteIndex int
+
+	// helpReturn is the screen Help was opened from, so closing it lands back
+	// there — the form keeps its generator panel open underneath untouched.
+	helpReturn screen
 
 	status     string
 	statusErr  bool
@@ -424,6 +429,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case screenHelp:
+		// Help is modal: only the keys that close it are read, so a user
+		// reading "d delete" cannot delete anything by trying it out.
+		if k == "?" || k == "esc" {
+			m.screen = m.helpReturn
+		}
+		return m, nil
+
 	default: // screenList
 		if m.list.FilterState() == list.Filtering {
 			var cmd tea.Cmd
@@ -434,6 +447,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
+		case "?":
+			return m.openHelp(), nil
 		case "n":
 			m.form = newForm(m.cfg.Generator)
 			m.screen = screenForm
@@ -534,6 +549,8 @@ func (m Model) handleGeneratorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.form.rerollGenerator()
 		return m, nil
+	case "?":
+		return m.openHelp(), nil
 	}
 	for _, r := range msg.Text {
 		if r >= '0' && r <= '9' {
@@ -541,6 +558,13 @@ func (m Model) handleGeneratorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// openHelp shows Help for the current screen and remembers where to go back.
+func (m Model) openHelp() Model {
+	m.helpReturn = m.screen
+	m.screen = screenHelp
+	return m
 }
 
 func (m Model) formNavigable() bool {
@@ -688,6 +712,11 @@ func (m Model) content() string {
 		return m.form.View(m.width)
 	case screenConfirmDelete:
 		return m.confirmDeleteView()
+	case screenHelp:
+		if m.helpReturn == screenForm {
+			return helpView(generatorHelp(), m.width)
+		}
+		return helpView(listHelp(), m.width)
 	}
 
 	listWidth := m.list.Width()
@@ -725,7 +754,7 @@ func (m Model) statusLine() string {
 		return styleOK.Render(fmt.Sprintf("copied to clipboard · cleared in %ds", int(left.Seconds()+0.5)))
 	}
 	if m.detail.focused {
-		return styleHelp.Render("j/k pick field · c copy · r reveal · e edit · d delete · esc back to list · q quit")
+		return styleHelp.Render("j/k pick field · c copy · r reveal · e edit · d delete · esc back to list · ? help · q quit")
 	}
-	return styleHelp.Render("↑/↓ pick · / search · tab to detail · n new · e edit · d delete · q quit")
+	return styleHelp.Render("↑/↓ pick · / search · tab to detail · n new · e edit · d delete · ? help · q quit")
 }

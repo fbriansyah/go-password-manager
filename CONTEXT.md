@@ -47,3 +47,7 @@ _Avoid_: filename, id, key
 **Generator Policy**:
 The rules that shape a generated password — how long it is and which character classes take part; it outlives any one password and is inherited by a Vault from the global configuration.
 _Avoid_: settings, preferences, options, recipe
+
+**Help**:
+The full key reference for the screen that is currently showing, opened on demand and covering the screen until it is closed; distinct from the one-line hint every screen always carries.
+_Avoid_: helper, cheat sheet, legend, hint
