@@ -84,6 +84,7 @@ the list on the left, the selected secret's fields on the right.
 | `n` | new secret |
 | `e` | edit the selected secret |
 | `d` | delete the selected secret (asks first) |
+| `?` | help: the full key reference for this screen |
 | `q` | quit |
 
 **Detail pane**
@@ -143,6 +144,7 @@ to the four knobs that shape it — this is the Generator Policy.
 | `←` `→` | change the focused knob — length by one, a class on or off |
 | digits | type a length directly |
 | `r` | reroll: a new candidate, same knobs |
+| `?` | help: the full key reference for the panel |
 | `enter` | accept the candidate shown |
 | `ctrl+s` | save the current knobs to `config.yaml` as the default |
 | `esc` | close without touching the field |

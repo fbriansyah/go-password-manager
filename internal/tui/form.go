@@ -516,7 +516,7 @@ func (m formModel) View(width int) string {
 	}
 	if m.genOpen {
 		lines = append(lines, styleHelp.Render(
-			"↑/↓ knob · ←/→ change · digits length · r reroll · enter accept · "+modLabel()+"s save default · esc cancel"))
+			"↑/↓ knob · ←/→ change · digits length · r reroll · enter accept · "+modLabel()+"s save default · esc cancel · ? help"))
 	} else {
 		mod := modLabel()
 		lines = append(lines, styleHelp.Render(
