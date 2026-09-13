@@ -361,64 +361,26 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case screenForm:
-		if m.form.genOpen {
-			return m.handleGeneratorKey(msg)
-		}
-		if m.form.confirmDiscard {
-			if k == "esc" {
-				m.screen = screenList
-				m.setStatus("", false)
-				return m, nil
+		var out formOutcome
+		var cmd tea.Cmd
+		m.form, out, cmd = m.form.handle(msg)
+		// A Policy changed in the panel outlives the form (docs/milestone-3.md).
+		m.cfg.Generator = m.form.policy
+		switch out.kind {
+		case formSubmit:
+			if m.form.editSlug != "" {
+				return m, saveCmd(m.store, m.form.editSlug, out.secret)
 			}
-			m.form.confirmDiscard = false
-			return m, nil
-		}
-		switch {
-		case k == "esc":
-			if m.form.dirty() {
-				m.form.confirmDiscard = true
-				return m, nil
-			}
+			return m, createCmd(m.store, out.secret)
+		case formCancelled:
 			m.screen = screenList
 			m.setStatus("", false)
 			return m, nil
-		case k == "ctrl+s":
-			s := m.form.secretValue()
-			if err := s.Validate(); err != nil {
-				m.form.err = err
-				return m, nil
-			}
-			if m.form.editSlug != "" {
-				return m, saveCmd(m.store, m.form.editSlug, s)
-			}
-			return m, createCmd(m.store, s)
-		case k == "ctrl+n":
-			m.form.addRow()
-			return m, nil
-		case k == "ctrl+d":
-			m.form.removeRow()
-			return m, nil
-		case k == "ctrl+g":
-			m.form.openGenerator()
-			return m, nil
-		case k == "ctrl+r":
-			m.form.toggleReveal()
-			return m, nil
-		case k == "tab", k == "down" && m.formNavigable():
-			m.form.moveFocus(1)
-			return m, nil
-		case k == "shift+tab", k == "up" && m.formNavigable():
-			m.form.moveFocus(-1)
-			return m, nil
-		case k == "left" && m.form.focus >= metaInputs && m.formTypeCycle():
-			m.form.cycleType(-1)
-			return m, nil
-		case k == "right" && m.form.focus >= metaInputs && m.formTypeCycle():
-			m.form.cycleType(1)
-			return m, nil
+		case formSavePolicy:
+			return m, saveGeneratorCmd(m.cfg.Generator)
+		case formOpenHelp:
+			return m.openHelp(), nil
 		}
-		var cmd tea.Cmd
-		m.form, cmd = m.form.Update(msg)
 		return m, cmd
 
 	case screenConfirmDelete:
@@ -517,70 +479,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// formNavigable keeps up/down arrows moving the cursor inside a multi-line note
-// instead of jumping between fields.
-// handleGeneratorKey handles every key while the generator panel is open. It
-// keeps them from reaching the field rows underneath, and from the form-level
-// bindings they would otherwise collide with — ctrl+s here saves the Policy,
-// not the Secret.
-func (m Model) handleGeneratorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	k := shortcut(msg)
-	switch k {
-	case "esc":
-		m.form.closeGenerator()
-		m.cfg.Generator = m.form.policy
-		return m, nil
-	case "enter":
-		m.form.acceptGenerator()
-		m.cfg.Generator = m.form.policy
-		return m, nil
-	case "up":
-		m.form.moveGenKnob(-1)
-		return m, nil
-	case "down":
-		m.form.moveGenKnob(1)
-		return m, nil
-	case "left":
-		m.form.adjustGenKnob(-1)
-		return m, nil
-	case "right":
-		m.form.adjustGenKnob(1)
-		return m, nil
-	case "ctrl+s":
-		m.cfg.Generator = m.form.policy
-		return m, saveGeneratorCmd(m.cfg.Generator)
-	case "r":
-		m.form.rerollGenerator()
-		return m, nil
-	case "?":
-		return m.openHelp(), nil
-	}
-	for _, r := range msg.Text {
-		if r >= '0' && r <= '9' {
-			m.form.typeLength(r)
-		}
-	}
-	return m, nil
-}
-
 // openHelp shows Help for the current screen and remembers where to go back.
 func (m Model) openHelp() Model {
 	m.helpReturn = m.screen
 	m.screen = screenHelp
 	return m
-}
-
-func (m Model) formNavigable() bool {
-	row, part, ok := m.form.rowAt(m.form.focus)
-	if !ok || part == 0 {
-		return true
-	}
-	return m.form.rows[row].fieldType().Editor != secret.EditorArea
-}
-
-func (m Model) formTypeCycle() bool {
-	_, part, ok := m.form.rowAt(m.form.focus)
-	return ok && part == 0
 }
 
 func (m Model) delegate(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -717,7 +620,7 @@ func (m Model) content() string {
 		return m.confirmDeleteView()
 	case screenHelp:
 		if m.helpReturn == screenForm {
-			return helpView(generatorHelp(), m.width)
+			return helpView(m.form.help(), m.width)
 		}
 		return helpView(listHelp(), m.width)
 	}

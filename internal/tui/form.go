@@ -34,12 +34,14 @@ const (
 )
 
 // fieldRow is one Field being edited. Which editor it uses is decided by the
-// Field Type's EditorKind, not by this form.
+// Field Type's EditorKind, not by this form. typeID is kept as the ID rather
+// than a position in secret.Types(), so a type this version does not know
+// is carried through an edit untouched (secret.TypeFor).
 type fieldRow struct {
-	typeIndex int
-	label     textinput.Model
-	line      textinput.Model
-	area      textarea.Model
+	typeID string
+	label  textinput.Model
+	line   textinput.Model
+	area   textarea.Model
 	// reveal shows a masked value in plain text while editing, so a Password
 	// field can be checked against what is actually stored without leaving
 	// the form. It always starts hidden again on the next row (never carried
@@ -59,10 +61,10 @@ func newFieldRow() fieldRow {
 	area.Placeholder = "note"
 	area.SetHeight(3)
 
-	return fieldRow{label: label, line: line, area: area}
+	return fieldRow{typeID: secret.Types()[0].ID, label: label, line: line, area: area}
 }
 
-func (r fieldRow) fieldType() secret.Type { return secret.Types()[r.typeIndex] }
+func (r fieldRow) fieldType() secret.Type { return secret.TypeFor(r.typeID) }
 
 func (r fieldRow) value() string {
 	if r.fieldType().Editor == secret.EditorArea {
@@ -90,8 +92,9 @@ func (r *fieldRow) syncEcho() {
 	r.line.EchoMode = textinput.EchoNormal
 }
 
-// formModel is the new-Secret form: Meta at the top, a series of Fields below
-// it. Focus runs straight down with tab.
+// formModel is the form a Secret is created or edited in: Meta at the top, a
+// series of Fields below it. Focus runs straight down with tab. The keys it
+// answers to, and what it reports back to Model, live in form_keys.go.
 type formModel struct {
 	title       textinput.Model
 	description textinput.Model
@@ -174,7 +177,7 @@ func editForm(policy generator.Options, slug string, s *secret.Secret) formModel
 	rows := make([]fieldRow, 0, len(s.Fields))
 	for _, f := range s.Fields {
 		row := newFieldRow()
-		row.typeIndex = typeIndexFor(f.Type)
+		row.typeID = f.Type
 		row.label.SetValue(f.Label)
 		row.setValue(f.Value)
 		row.syncEcho()
@@ -189,17 +192,6 @@ func editForm(policy generator.Options, slug string, s *secret.Secret) formModel
 	m := formModel{title: title, description: desc, tags: tags, rows: rows, policy: policy, editSlug: slug}
 	m.initial, _ = secret.Marshal(m.secretValue())
 	return m
-}
-
-// typeIndexFor finds the row index secret.Types() uses for id, defaulting to
-// the first type when id is not registered.
-func typeIndexFor(id string) int {
-	for i, t := range secret.Types() {
-		if t.ID == id {
-			return i
-		}
-	}
-	return 0
 }
 
 // dirty reports whether the form no longer matches what it was built with.
@@ -286,7 +278,16 @@ func (m *formModel) cycleType(delta int) {
 		return
 	}
 	types := secret.Types()
-	m.rows[row].typeIndex = (m.rows[row].typeIndex + delta + len(types)) % len(types)
+	// A foreign type sits outside the list: stepping off it lands on the
+	// first registered type either way.
+	idx := 0
+	for i, t := range types {
+		if t.ID == m.rows[row].typeID {
+			idx = (i + delta + len(types)) % len(types)
+			break
+		}
+	}
+	m.rows[row].typeID = types[idx].ID
 	m.rows[row].reveal = false
 	m.rows[row].syncEcho()
 	m.applyFocus()
@@ -514,14 +515,7 @@ func (m formModel) View(width int) string {
 	} else if m.err != nil {
 		lines = append(lines, styleErr.Render(m.err.Error()))
 	}
-	if m.genOpen {
-		lines = append(lines, styleHelp.Render(
-			"↑/↓ knob · ←/→ change · digits length · r reroll · enter accept · "+modLabel()+"s save default · esc cancel · ? help"))
-	} else {
-		mod := modLabel()
-		lines = append(lines, styleHelp.Render(
-			"tab move · ←/→ change type · "+mod+"n add field · "+mod+"d remove field · "+mod+"g generate · "+mod+"r reveal value · "+mod+"s save · esc cancel"))
-	}
+	lines = append(lines, styleHelp.Render(m.footer()))
 	return lipgloss.NewStyle().Padding(1, 2).Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 

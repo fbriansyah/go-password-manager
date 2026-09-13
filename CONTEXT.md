@@ -51,3 +51,7 @@ _Avoid_: settings, preferences, options, recipe
 **Help**:
 The full key reference for the screen that is currently showing, opened on demand and covering the screen until it is closed; distinct from the one-line hint every screen always carries.
 _Avoid_: helper, cheat sheet, legend, hint
+
+**Binding**:
+One key a screen answers to, together with the short hint the screen's footer shows for it and the fuller description Help shows; a screen's list of Bindings is the single source both are drawn from.
+_Avoid_: shortcut, hotkey, keymap, key
