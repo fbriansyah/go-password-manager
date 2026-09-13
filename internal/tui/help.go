@@ -13,9 +13,9 @@ type helpSection struct {
 	keys  []helpKey
 }
 
-// The bindings below are written by hand, mirroring the cases in handleKey
-// and handleGeneratorKey rather than being derived from them — the same
-// arrangement the footer hints already live with. Keep the three in step.
+// listHelp below is written by hand, mirroring the cases in handleKey — the
+// same arrangement the list footer lives with. The form's Help, by contrast,
+// is drawn from its Bindings (form_keys.go).
 
 // listHelp is Help for the list screen. Both focus modes are shown at once,
 // because the thing a footer cannot explain is how they relate: c and r only
@@ -41,25 +41,6 @@ func listHelp() []helpSection {
 		{"General", []helpKey{
 			{"?", "this help"},
 			{"q, ctrl+c", "quit"},
-		}},
-	}
-}
-
-// generatorHelp is Help for the generator panel inside the form.
-func generatorHelp() []helpSection {
-	mod := modLabel()
-	return []helpSection{
-		{"Generate password", []helpKey{
-			{"↑/↓", "pick a knob"},
-			{"←/→", "change the knob"},
-			{"0-9", "type a length"},
-			{"r", "reroll the candidate"},
-			{"enter", "accept the candidate into the field"},
-			{mod + "s", "save these knobs as the default generator policy"},
-			{"esc", "close the panel, leaving the field untouched"},
-		}},
-		{"General", []helpKey{
-			{"?", "this help"},
 		}},
 	}
 }

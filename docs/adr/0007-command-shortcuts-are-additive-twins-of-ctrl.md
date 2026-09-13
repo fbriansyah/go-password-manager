@@ -23,7 +23,7 @@ Ctrl must never be removed from the macOS path — the ⌘ bindings are a bonus 
 terminals that can deliver them, not the supported way in. That is also why the
 help line reads `⌘/^s save` rather than `⌘s save`: a user whose terminal eats
 Command has to be able to see the binding that still works. Because the
-normalisation sits at the top of `handleKey` and `handleGeneratorKey` rather than
+normalisation sits at the top of `handleKey` and `formModel.handle` rather than
 in the individual cases, any `ctrl+*` binding added later gets its ⌘ twin for
 free. Terminal capability is never probed: `tea.KeyboardEnhancementsMsg` would
 tell us the protocol is supported, but not that the terminal has let Command

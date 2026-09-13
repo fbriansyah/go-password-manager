@@ -68,6 +68,8 @@ func key(name string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyEsc}
 	case "tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 	case "up":
 		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
@@ -78,6 +80,10 @@ func key(name string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyRight}
 	case "backspace":
 		return tea.KeyPressMsg{Code: tea.KeyBackspace}
+	case "ctrl+n":
+		return tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
+	case "ctrl+d":
+		return tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
 	case "ctrl+g":
 		return tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl}
 	case "ctrl+r":
@@ -210,94 +216,6 @@ func TestCreateNewSecretThroughTheForm(t *testing.T) {
 	}
 }
 
-func TestFormRefusesASecretWithoutATitle(t *testing.T) {
-	m := unlocked(t)
-	m = update(t, m, text("n"))
-	m = run(t, m, key("ctrl+s"))
-	if m.screen != screenForm {
-		t.Fatal("a form without a title must not be saved")
-	}
-	if m.form.err == nil {
-		t.Fatal("want an error message on the form")
-	}
-}
-
-// Opening the panel on a Field Type the generator cannot fill must not open
-// it — instead it reports why, on the same err path a bad save uses.
-func TestGeneratorPanelRefusesANonGeneratableField(t *testing.T) {
-	m := unlocked(t)
-	m = update(t, m, text("n"))
-	m = update(t, m, key("tab")) // description
-	m = update(t, m, key("tab")) // tags
-	m = update(t, m, key("tab")) // label of the first field ("tx" by default)
-	m = update(t, m, key("tab")) // value
-	m = update(t, m, key("ctrl+g"))
-	if m.form.genOpen {
-		t.Fatal("the panel opened on a field type the generator cannot fill")
-	}
-	if m.form.err == nil {
-		t.Fatal("want an error explaining why nothing happened")
-	}
-}
-
-// esc leaves the Field exactly as it was, even after knobs were changed.
-func TestGeneratorPanelEscLeavesFieldUntouched(t *testing.T) {
-	m := unlocked(t)
-	m = update(t, m, text("n"))
-	m = update(t, m, key("tab"))   // description
-	m = update(t, m, key("tab"))   // tags
-	m = update(t, m, key("tab"))   // label
-	m = update(t, m, key("right")) // tx -> ps
-	m = update(t, m, key("tab"))   // value
-
-	m = update(t, m, key("ctrl+g"))
-	if !m.form.genOpen {
-		t.Fatal("the panel did not open on a generatable field")
-	}
-	m = update(t, m, key("left")) // turn the length knob down
-	m = update(t, m, key("esc"))
-
-	if m.form.genOpen {
-		t.Fatal("esc did not close the panel")
-	}
-	if m.form.rows[0].value() != "" {
-		t.Fatalf("esc filled the field: %q", m.form.rows[0].value())
-	}
-}
-
-// enter accepts exactly the candidate on screen, and the length knob turns
-// off the symbols and turns down the length, both honoured in the result.
-func TestGeneratorPanelEnterAcceptsTheKnobsChosen(t *testing.T) {
-	m := unlocked(t)
-	m = update(t, m, text("n"))
-	m = update(t, m, key("tab"))
-	m = update(t, m, key("tab"))
-	m = update(t, m, key("tab"))
-	m = update(t, m, key("right")) // tx -> ps
-	m = update(t, m, key("tab"))   // value
-
-	m = update(t, m, key("ctrl+g"))
-	m = update(t, m, key("down"))  // knob: upper
-	m = update(t, m, key("down"))  // knob: digits
-	m = update(t, m, key("down"))  // knob: symbols
-	m = update(t, m, key("left"))  // symbols off
-	m = update(t, m, key("enter")) // accept
-
-	if m.form.genOpen {
-		t.Fatal("enter did not close the panel")
-	}
-	got := m.form.rows[0].value()
-	if len(got) != 20 {
-		t.Fatalf("length = %d, want the default 20", len(got))
-	}
-	if strings.ContainsAny(got, generator.Symbols) {
-		t.Fatalf("%q contains a symbol despite the knob being off", got)
-	}
-	if m.cfg.Generator.Symbols {
-		t.Fatal("the session Policy was not updated with the knob change")
-	}
-}
-
 // A Policy changed in the panel stays changed for the rest of the session,
 // even without an explicit save: the next form to open starts from it.
 func TestGeneratorPolicyStaysForTheSession(t *testing.T) {
@@ -421,35 +339,14 @@ func TestEscOnAnUntouchedEditFormCancelsImmediately(t *testing.T) {
 	}
 }
 
-func TestEscOnADirtyEditFormAsksFirst(t *testing.T) {
+func TestADiscardedEditNeverReachesTheVault(t *testing.T) {
 	m := unlocked(t)
 	m = update(t, m, text("e"))
-	m = update(t, m, text("x")) // dirty the title
-	m = update(t, m, key("esc"))
-	if m.screen != screenForm {
-		t.Fatal("the first esc on a dirty form must ask before discarding")
-	}
-	if !m.form.confirmDiscard {
-		t.Fatal("want confirmDiscard set after the first esc")
-	}
-
-	// Any other key cancels the discard and returns to editing.
-	m = update(t, m, text("y"))
-	if m.form.confirmDiscard {
-		t.Fatal("a non-esc key should cancel the pending discard")
-	}
-	if m.screen != screenForm {
-		t.Fatal("a non-esc key should not leave the form")
-	}
-
-	// A second esc actually discards.
-	m = update(t, m, key("esc"))
-	if m.screen != screenForm {
-		t.Fatal("esc must ask again on the still-dirty form")
-	}
-	m = update(t, m, key("esc"))
+	m = update(t, m, text("x"))  // dirty the title
+	m = update(t, m, key("esc")) // asks
+	m = update(t, m, key("esc")) // discards
 	if m.screen != screenList {
-		t.Fatal("the second esc did not discard the form")
+		t.Fatalf("screen = %v after discarding, want screenList", m.screen)
 	}
 	s, err := m.store.Load("facebook")
 	if err != nil {
@@ -490,43 +387,6 @@ func TestCancellingDeleteTouchesNothing(t *testing.T) {
 	}
 	if _, err := m.store.Load("facebook"); err != nil {
 		t.Fatalf("Load facebook after cancel: %v", err)
-	}
-}
-
-func TestCtrlRRevealsAPasswordValueInTheForm(t *testing.T) {
-	m := unlocked(t)
-	m = update(t, m, text("e"))  // edit Facebook
-	m = update(t, m, key("tab")) // description
-	m = update(t, m, key("tab")) // tags
-	m = update(t, m, key("tab")) // label of the second field (Password)
-	m = update(t, m, key("tab")) // value of the first field (Username)
-	m = update(t, m, key("tab")) // label of the second field
-	m = update(t, m, key("tab")) // value of the second field (Password)
-
-	if strings.Contains(m.View().Content, "s3cret-value") {
-		t.Fatal("the value is shown before ctrl+r is pressed")
-	}
-	m = update(t, m, key("ctrl+r"))
-	if !strings.Contains(m.View().Content, "s3cret-value") {
-		t.Fatalf("ctrl+r did not reveal the value:\n%s", m.View().Content)
-	}
-	m = update(t, m, key("ctrl+r"))
-	if strings.Contains(m.View().Content, "s3cret-value") {
-		t.Fatal("a second ctrl+r did not hide the value again")
-	}
-}
-
-func TestCtrlRDoesNothingOnANonMaskedField(t *testing.T) {
-	m := unlocked(t)
-	m = update(t, m, text("e"))  // edit Facebook
-	m = update(t, m, key("tab")) // description
-	m = update(t, m, key("tab")) // tags
-	m = update(t, m, key("tab")) // label of the first field (Username, "tx")
-	m = update(t, m, key("tab")) // value of the first field
-
-	m = update(t, m, key("ctrl+r"))
-	if m.form.rows[0].reveal {
-		t.Fatal("ctrl+r toggled reveal on a field type that is never masked")
 	}
 }
 
@@ -611,15 +471,66 @@ func TestHelpFromTheGeneratorReturnsToThePanel(t *testing.T) {
 	}
 }
 
-// ? in the form is a character the user is typing, never Help.
-func TestQuestionMarkInTheFormIsTyped(t *testing.T) {
+// ctrl+s in the panel writes the Policy to the global configuration — and
+// only there, never into the Vault's own override.
+func TestSavingThePolicyFromThePanelWritesTheGlobalConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := unlocked(t)
-	m = update(t, m, text("n"))
-	m = update(t, m, text("?"))
-	if m.screen != screenForm {
-		t.Fatalf("screen = %v, want screenForm", m.screen)
+	// The global file must exist with its key paths for Load to read it back.
+	_, path, err := config.Defaults()
+	if err != nil {
+		t.Fatalf("Defaults: %v", err)
 	}
-	if got := m.form.title.Value(); got != "?" {
-		t.Fatalf("title = %q, want %q", got, "?")
+	if err := config.Write(path, m.cfg); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	m = update(t, m, text("n"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("tab"))
+	m = update(t, m, key("right")) // tx -> ps
+	m = update(t, m, key("tab"))   // value
+	m = update(t, m, key("ctrl+g"))
+	m = update(t, m, text("3"))
+	m = update(t, m, text("2"))
+	m = run(t, m, key("ctrl+s"))
+	if !strings.Contains(m.status, "saved") || m.statusErr {
+		t.Fatalf("status = %q (err %v), want a saved confirmation", m.status, m.statusErr)
+	}
+	cfg, err := config.Load(m.vaultDir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Generator.Length != 32 {
+		t.Fatalf("the saved Policy length = %d, want 32", cfg.Generator.Length)
+	}
+}
+
+// A Field Type this version does not know is written back as it was read.
+func TestEditingKeepsAForeignFieldTypeOnDisk(t *testing.T) {
+	m := unlocked(t)
+	if _, err := m.store.Create(&secret.Secret{
+		Meta:   secret.Meta{Title: "Bank"},
+		Fields: []secret.Field{{Type: "totp", Label: "Code", Value: "JBSWY3DP"}},
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	entries, _, err := loadAll(m.store)
+	if err != nil {
+		t.Fatalf("loadAll: %v", err)
+	}
+	m.setEntries(entries, "bank")
+	m = update(t, m, text("e"))
+	m = update(t, m, text(" plc"))
+	m = run(t, m, key("ctrl+s"))
+	if m.screen != screenList {
+		t.Fatalf("screen = %v after saving, want screenList (err: %v)", m.screen, m.form.err)
+	}
+	s, err := m.store.Load("bank-plc")
+	if err != nil {
+		t.Fatalf("Load bank-plc: %v", err)
+	}
+	if len(s.Fields) != 1 || s.Fields[0].Type != "totp" || s.Fields[0].Value != "JBSWY3DP" {
+		t.Fatalf("fields after edit = %+v, want the totp field untouched", s.Fields)
 	}
 }
