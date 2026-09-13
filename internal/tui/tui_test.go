@@ -623,3 +623,25 @@ func TestQuestionMarkInTheFormIsTyped(t *testing.T) {
 		t.Fatalf("title = %q, want %q", got, "?")
 	}
 }
+
+// Quitting is this Model's decision alone: q and ctrl+c. The list widget
+// underneath ships its own quit binding (v, in bubbles v2), which must never
+// reach the user — a stray key in the list closes the Vault otherwise.
+func TestOnlyQAndCtrlCQuitFromTheList(t *testing.T) {
+	m := unlocked(t)
+	for _, k := range []tea.KeyPressMsg{text("v"), text("x"), key("esc"), key("enter")} {
+		next, cmd := m.Update(k)
+		if next.(Model).quitting {
+			t.Fatalf("%q set quitting", k.String())
+		}
+		if cmd != nil {
+			if _, quit := cmd().(tea.QuitMsg); quit {
+				t.Fatalf("%q reached the list widget's quit binding", k.String())
+			}
+		}
+	}
+	next, cmd := m.Update(text("q"))
+	if !next.(Model).quitting || cmd == nil {
+		t.Fatal("q did not quit")
+	}
+}
