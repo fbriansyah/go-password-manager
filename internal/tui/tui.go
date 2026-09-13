@@ -94,6 +94,9 @@ func New(vaultDir string, cfg config.Config) Model {
 	l.Title = "Secret"
 	l.SetShowHelp(false)
 	l.SetStatusBarItemName("secret", "secret")
+	// Quitting is handleKey's decision (q, ctrl+c). The widget's own bindings
+	// — v in bubbles v2 — would otherwise close the Vault on a stray key.
+	l.DisableQuitKeybindings()
 	return Model{
 		vaultDir: vaultDir,
 		cfg:      cfg,
