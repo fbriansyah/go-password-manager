@@ -269,3 +269,44 @@ func TestFooterAndHelpAreDrawnFromTheBindings(t *testing.T) {
 		t.Errorf("panel Help is not the panel's:\n%s", help)
 	}
 }
+
+// ↑/↓ walk the inputs like tab does — except inside a note, where they
+// belong to the text and move between its lines.
+func TestUpAndDownMoveBetweenInputsExceptInsideANote(t *testing.T) {
+	f := newForm(generator.Default())
+	f, _ = press(f, key("down"), key("down"))
+	if f.focus != 2 {
+		t.Fatalf("focus after two downs = %d, want 2 (tags)", f.focus)
+	}
+	f, _ = press(f, key("up"))
+	if f.focus != 1 {
+		t.Fatalf("focus after up = %d, want 1 (description)", f.focus)
+	}
+
+	// Onto the first field's label, cycle to the note type, then its value.
+	f, _ = press(f, key("down"), key("down"))
+	for f.rows[0].fieldType().Editor != secret.EditorArea {
+		f, _ = press(f, key("right"))
+	}
+	f, _ = press(f, key("down"))
+	value := f.focus
+	f, _ = press(f, text("one"), key("enter"), text("two"), key("up"), key("down"))
+	if f.focus != value {
+		t.Fatalf("focus left the note: %d, want %d", f.focus, value)
+	}
+	if got := f.rows[0].value(); got != "one\ntwo" {
+		t.Fatalf("note = %q, want two lines", got)
+	}
+}
+
+// While the panel is open nothing it does not claim reaches the field under it.
+func TestGeneratorPanelSwallowsUnclaimedKeys(t *testing.T) {
+	f := onPasswordValue(t)
+	f, out := press(f, key("ctrl+g"), text("x"), key("tab"), key("backspace"))
+	if out.kind != formNone || !f.genOpen {
+		t.Fatalf("outcome %v, genOpen %v", out.kind, f.genOpen)
+	}
+	if f.rows[0].value() != "" || f.focus != metaInputs+1 {
+		t.Fatalf("panel keys leaked: value %q, focus %d", f.rows[0].value(), f.focus)
+	}
+}
