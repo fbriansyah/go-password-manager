@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -11,14 +12,16 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/crypto"
 	"github.com/fbriansyah/go-password-manager/internal/generator"
 	"github.com/fbriansyah/go-password-manager/internal/secret"
+	"github.com/fbriansyah/go-password-manager/internal/totp"
 	"github.com/fbriansyah/go-password-manager/internal/vault"
 )
 
 const testPassword = "master-password"
 
-// unlocked prepares a Vault holding one Secret, then runs the Unlock flow the
-// way a user does: type the password, press enter.
-func unlocked(t *testing.T) Model {
+// unlocked prepares a Vault holding one Secret (plus any extra ones given),
+// then runs the Unlock flow the way a user does: type the password, press
+// enter.
+func unlocked(t *testing.T, extra ...*secret.Secret) Model {
 	t.Helper()
 	keyDir, vaultDir := t.TempDir(), t.TempDir()
 	idPath := filepath.Join(keyDir, "identity.age")
@@ -42,6 +45,11 @@ func unlocked(t *testing.T) Model {
 		},
 	}); err != nil {
 		t.Fatalf("Create: %v", err)
+	}
+	for _, s := range extra {
+		if _, err := store.Create(s); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
 	}
 
 	// config.Load always seeds Generator with generator.Default() before a file
@@ -511,7 +519,7 @@ func TestEditingKeepsAForeignFieldTypeOnDisk(t *testing.T) {
 	m := unlocked(t)
 	if _, err := m.store.Create(&secret.Secret{
 		Meta:   secret.Meta{Title: "Bank"},
-		Fields: []secret.Field{{Type: "totp", Label: "Code", Value: "JBSWY3DP"}},
+		Fields: []secret.Field{{Type: "zz", Label: "Code", Value: "JBSWY3DP"}},
 	}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -530,8 +538,8 @@ func TestEditingKeepsAForeignFieldTypeOnDisk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load bank-plc: %v", err)
 	}
-	if len(s.Fields) != 1 || s.Fields[0].Type != "totp" || s.Fields[0].Value != "JBSWY3DP" {
-		t.Fatalf("fields after edit = %+v, want the totp field untouched", s.Fields)
+	if len(s.Fields) != 1 || s.Fields[0].Type != "zz" || s.Fields[0].Value != "JBSWY3DP" {
+		t.Fatalf("fields after edit = %+v, want the foreign field untouched", s.Fields)
 	}
 }
 
@@ -554,5 +562,49 @@ func TestOnlyQAndCtrlCQuitFromTheList(t *testing.T) {
 	next, cmd := m.Update(text("q"))
 	if !next.(Model).quitting || cmd == nil {
 		t.Fatal("q did not quit")
+	}
+}
+
+// bank is a second Secret holding the RFC 6238 seed; pinClock fixes the time
+// so its Code is known: 287082 with one second left.
+var bank = &secret.Secret{
+	Meta:   secret.Meta{Title: "Bank"},
+	Fields: []secret.Field{{Type: "tp", Label: "2FA", Value: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"}},
+}
+
+func pinClock(t *testing.T) {
+	t.Helper()
+	old := totp.Now
+	totp.Now = func() time.Time { return time.Unix(59, 0) }
+	t.Cleanup(func() { totp.Now = old })
+}
+
+func TestTheDetailPaneKeepsTimeOnlyWhileATOTPFieldIsHighlighted(t *testing.T) {
+	pinClock(t)
+	m := unlocked(t, bank) // sorted: Bank first, Facebook second
+
+	// A tick lands: the clock only continues while a Code is on screen.
+	tickOnce := func() bool {
+		next, cmd := m.Update(tickMsg(time.Now()))
+		m = next.(Model)
+		return cmd != nil
+	}
+
+	if !strings.Contains(m.View().Content, "287 082  ·  1s") {
+		t.Fatalf("the detail pane does not show the live Code:\n%s", m.View().Content)
+	}
+	if !tickOnce() {
+		t.Fatal("the clock stopped while Bank is highlighted")
+	}
+
+	m = update(t, m, text("j")) // highlight Facebook
+	if tickOnce() {
+		t.Fatal("Facebook has no TOTP Field, yet the clock kept running")
+	}
+
+	next, cmd := m.Update(text("k")) // back to Bank
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("highlighting a Secret with a TOTP Field did not start the clock")
 	}
 }

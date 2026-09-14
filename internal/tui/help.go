@@ -33,7 +33,7 @@ func listHelp() []helpSection {
 		{"Detail", []helpKey{
 			{"j/k, ↑/↓", "pick a field"},
 			{"c", "copy the field's value to the clipboard"},
-			{"r", "reveal or hide a masked value"},
+			{"r", "reveal or hide a masked value (the seed, for a TOTP field)"},
 			{"e", "edit this secret"},
 			{"d", "delete this secret (asks first)"},
 			{"esc", "back to the list"},

@@ -82,6 +82,7 @@ type Model struct {
 	status     string
 	statusErr  bool
 	clearsAt   time.Time
+	ticking    bool // a tick is in flight; see Update
 	width      int
 	height     int
 	quitting   bool
@@ -256,7 +257,35 @@ func tick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
+// needsClock reports whether something on screen changes with the time: the
+// clipboard countdown, or a Code in the detail pane.
+func (m Model) needsClock() bool {
+	if time.Now().Before(m.clearsAt) {
+		return true
+	}
+	if s := m.current(); s != nil && m.screen == screenList {
+		for _, f := range s.Fields {
+			if secret.TypeFor(f.Type).Live {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Update handles one message, then makes sure a clock is running whenever
+// the screen needs one and only one is ever in flight.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	m = next.(Model)
+	if !m.ticking && m.needsClock() {
+		m.ticking = true
+		cmd = tea.Batch(cmd, tick())
+	}
+	return m, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -315,17 +344,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case copiedMsg:
 		m.clearsAt = time.Now().Add(clipboard.ClearAfter)
 		m.setStatus("", false)
-		return m, tick()
+		return m, nil
 
 	case policySavedMsg:
 		m.setStatus("generator policy saved as default", false)
 		return m, nil
 
 	case tickMsg:
-		if time.Now().Before(m.clearsAt) {
-			return m, tick()
+		m.ticking = false // Update restarts it if the screen still needs one
+		if !time.Now().Before(m.clearsAt) {
+			m.clearsAt = time.Time{}
 		}
-		m.clearsAt = time.Time{}
 		return m, nil
 
 	case tea.KeyPressMsg:

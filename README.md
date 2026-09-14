@@ -130,8 +130,11 @@ terminal that forwards it (Ghostty, Kitty, WezTerm). Terminal.app and iTerm2
 keep Command for themselves, so ctrl is always the binding that works, and the
 help line shows both as `⌘/^s`. `ctrl+c` is ctrl everywhere: ⌘C stays copy.
 
-Field types are `Text` (single line), `Password` (masked, generatable) and
-`Note` (multi-line).
+Field types are `Text` (single line), `Password` (masked, generatable),
+`Note` (multi-line) and `TOTP`. A `TOTP` field takes what a service shows
+under "can't scan?" when two-factor is enabled — the base32 seed, or the whole
+`otpauth://` URI — and the detail pane shows the current code with the seconds
+it has left; `c` copies the code, `r` shows the seed.
 
 **Generator panel**
 
@@ -208,4 +211,5 @@ decisions behind it in [docs/adr/](./docs/adr/).
 ## Status
 
 Working today: `init`, unlock, list and search, view and copy fields, create,
-edit and delete secrets, all with a configurable password generator.
+edit and delete secrets, all with a configurable password generator, and TOTP
+codes for two-factor logins.

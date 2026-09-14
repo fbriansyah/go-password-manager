@@ -47,6 +47,11 @@ func (s *Secret) Validate() error {
 		if f.Type == "" {
 			return fmt.Errorf("field %q has no type", f.Label)
 		}
+		if v := TypeFor(f.Type).Validate; v != nil {
+			if err := v(f.Value); err != nil {
+				return fmt.Errorf("field %q: %w", f.Label, err)
+			}
+		}
 	}
 	return nil
 }

@@ -1,6 +1,11 @@
 package secret
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/fbriansyah/go-password-manager/internal/totp"
+)
 
 // EditorKind states the kind of editor a Field Type needs, without naming any
 // TUI component — that mapping belongs to the TUI layer.
@@ -28,8 +33,17 @@ type Type struct {
 	// Copy produces the value that goes to the clipboard.
 	Copy func(value string) (string, error)
 
+	// Validate rejects a value that cannot be stored; nil means any value is
+	// fine. It runs at save time, when the user still has the original in
+	// front of them.
+	Validate func(value string) error
+
 	// Generatable marks types the password generator is allowed to fill.
 	Generatable bool
+
+	// Live marks types whose rendering changes with the clock, so a screen
+	// showing one has to redraw on its own.
+	Live bool
 
 	known bool // false for foreign types met while loading a file
 }
@@ -103,4 +117,46 @@ func init() {
 	Register(Type{
 		ID: "ta", Name: "Note", Editor: EditorArea,
 	})
+	Register(Type{
+		ID: "tp", Name: "TOTP", Editor: EditorLine, Live: true,
+		Render:   totpRender,
+		Copy:     totpCopy,
+		Validate: totpValidate,
+	})
+}
+
+// The TOTP Field Type stores an Authenticator Seed and shows the Code derived
+// from it. Reveal shows the Seed itself, for moving it to another device.
+// The Seed is parsed on every use so a bad one from an old or hand-edited
+// file degrades to a message instead of trusting the file (ADR 0008).
+func totpRender(value string, reveal bool) string {
+	if reveal {
+		return value
+	}
+	seed, err := totp.Parse(value)
+	if err != nil {
+		return "invalid seed"
+	}
+	now := totp.Now()
+	return fmt.Sprintf("%s  ·  %ds", groupDigits(seed.Code(now)), int(seed.Remaining(now).Seconds()))
+}
+
+func totpCopy(value string) (string, error) {
+	seed, err := totp.Parse(value)
+	if err != nil {
+		return "", err
+	}
+	return seed.Code(totp.Now()), nil
+}
+
+func totpValidate(value string) error {
+	_, err := totp.Parse(value)
+	return err
+}
+
+// groupDigits splits a Code the way authenticator apps do: sixes in threes,
+// eights in fours.
+func groupDigits(code string) string {
+	half := len(code) / 2
+	return code[:half] + " " + code[half:]
 }

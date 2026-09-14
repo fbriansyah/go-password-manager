@@ -98,13 +98,13 @@ func TestTabAndArrowsPickTheFieldAndItsType(t *testing.T) {
 func TestAForeignFieldTypeSurvivesAnEdit(t *testing.T) {
 	s := &secret.Secret{
 		Meta:   secret.Meta{Title: "Bank"},
-		Fields: []secret.Field{{Type: "totp", Label: "Code", Value: "JBSWY3DP"}},
+		Fields: []secret.Field{{Type: "zz", Label: "Code", Value: "JBSWY3DP"}},
 	}
 	f := editForm(generator.Default(), "bank", s)
 	f, _ = press(f, key("tab"), key("tab"), key("tab"), key("tab"), text("X")) // touch the value
 	got := f.secretValue().Fields[0]
-	if got.Type != "totp" || got.Value != "JBSWY3DPX" {
-		t.Fatalf("field after edit = %+v, want type totp kept", got)
+	if got.Type != "zz" || got.Value != "JBSWY3DPX" {
+		t.Fatalf("field after edit = %+v, want type zz kept", got)
 	}
 
 	// Cycling the type is the one deliberate way off a foreign type.
@@ -308,5 +308,20 @@ func TestGeneratorPanelSwallowsUnclaimedKeys(t *testing.T) {
 	}
 	if f.rows[0].value() != "" || f.focus != metaInputs+1 {
 		t.Fatalf("panel keys leaked: value %q, focus %d", f.rows[0].value(), f.focus)
+	}
+}
+
+func TestSaveRefusesAMalformedAuthenticatorSeed(t *testing.T) {
+	s := &secret.Secret{
+		Meta:   secret.Meta{Title: "Bank"},
+		Fields: []secret.Field{{Type: "tp", Label: "2FA", Value: "not base32!"}},
+	}
+	f := editForm(generator.Default(), "bank", s)
+	f, out := press(f, key("ctrl+s"))
+	if out.kind != formNone {
+		t.Fatalf("outcome = %v, want formNone", out.kind)
+	}
+	if f.err == nil || !strings.Contains(f.err.Error(), "2FA") {
+		t.Fatalf("err = %v, want a message naming the Field", f.err)
 	}
 }
