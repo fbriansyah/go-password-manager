@@ -55,3 +55,11 @@ _Avoid_: helper, cheat sheet, legend, hint
 **Binding**:
 One key a screen answers to, together with the short hint the screen's footer shows for it and the fuller description Help shows; a screen's list of Bindings is the single source both are drawn from.
 _Avoid_: shortcut, hotkey, keymap, key
+
+**Authenticator Seed**:
+The value a TOTP Field stores: what a service hands over when two-factor is enabled, either a bare base32 secret or an `otpauth://` URI that also carries digits, period, and algorithm. Never shown as-is by default and never what gets copied.
+_Avoid_: TOTP secret, key, token
+
+**Code**:
+The short group of digits derived from an Authenticator Seed and the current time; it is what a TOTP Field copies and what the detail pane shows, and it is worth nothing once its period is over.
+_Avoid_: OTP, token, pin
