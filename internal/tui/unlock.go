@@ -22,6 +22,7 @@ func newUnlock(vaultDir string) unlockModel {
 	in.EchoCharacter = '•'
 	in.Focus()
 	in.CharLimit = 256
+	in.SetWidth(inputWidth)
 	return unlockModel{input: in, vaultDir: vaultDir}
 }
 

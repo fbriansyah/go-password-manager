@@ -53,9 +53,11 @@ func newFieldRow() fieldRow {
 	label := textinput.New()
 	label.Placeholder = "label"
 	label.CharLimit = 64
+	label.SetWidth(inputWidth)
 
 	line := textinput.New()
 	line.Placeholder = "value"
+	line.SetWidth(inputWidth)
 
 	area := textarea.New()
 	area.Placeholder = "note"
@@ -133,6 +135,13 @@ const metaInputs = 3
 // inputsPerRow: the label and the value are one focus stop each.
 const inputsPerRow = 2
 
+// inputWidth is set on every textinput.Model in this form. Bubbles' textinput
+// only renders a placeholder past its first character once a width has been
+// set (Width() > 0) — left at the zero value, placeholderView clips to one
+// rune. There is no live form width available when these are constructed, so
+// a fixed width comfortably wider than any placeholder used here stands in.
+const inputWidth = 60
+
 // newForm starts a blank form. policy is the Generator Policy this session
 // currently holds; ctrl+g starts from it and any change to it in the panel is
 // the caller's to keep for the forms that come after this one.
@@ -140,13 +149,16 @@ func newForm(policy generator.Options) formModel {
 	title := textinput.New()
 	title.Placeholder = "title, e.g. Facebook"
 	title.CharLimit = 120
+	title.SetWidth(inputWidth)
 	title.Focus()
 
 	desc := textinput.New()
 	desc.Placeholder = "description (optional)"
+	desc.SetWidth(inputWidth)
 
 	tags := textinput.New()
 	tags.Placeholder = "tags, comma separated (optional)"
+	tags.SetWidth(inputWidth)
 
 	row := newFieldRow()
 	row.syncEcho()
@@ -163,15 +175,18 @@ func editForm(policy generator.Options, slug string, s *secret.Secret) formModel
 	title := textinput.New()
 	title.Placeholder = "title, e.g. Facebook"
 	title.CharLimit = 120
+	title.SetWidth(inputWidth)
 	title.SetValue(s.Meta.Title)
 	title.Focus()
 
 	desc := textinput.New()
 	desc.Placeholder = "description (optional)"
+	desc.SetWidth(inputWidth)
 	desc.SetValue(s.Meta.Description)
 
 	tags := textinput.New()
 	tags.Placeholder = "tags, comma separated (optional)"
+	tags.SetWidth(inputWidth)
 	tags.SetValue(strings.Join(s.Meta.Tags, ", "))
 
 	rows := make([]fieldRow, 0, len(s.Fields))
