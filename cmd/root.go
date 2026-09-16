@@ -29,7 +29,7 @@ func Execute() error {
 	}
 	root.PersistentFlags().StringVarP(&directory, "directory", "d", "",
 		"vault folder (default: the current working directory)")
-	root.AddCommand(initCmd(), clipboardClearCmd())
+	root.AddCommand(initCmd(), exportKeysCmd(), clipboardClearCmd())
 	return root.Execute()
 }
 

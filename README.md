@@ -196,6 +196,19 @@ Since only the public key is needed to write, a machine that holds
 `recipient.pub` alone can add secrets to a vault without ever being able to
 read it.
 
+## Moving keys to another drive
+
+```sh
+gopm export-keys
+```
+
+Verifies the master password, then writes `gopm-keys-<timestamp>.zip` (in the
+current directory, or wherever `-o` points) containing the Identity, the
+Recipient, and a manifest. The Identity is already encrypted with the master
+password, so the zip adds no encryption of its own — it is a container, not a
+second vault (docs/adr/0009). `export-keys` never touches a Secret; the vault
+itself can be moved or backed up on its own, e.g. with git.
+
 ## Development
 
 ```sh
@@ -211,5 +224,6 @@ decisions behind it in [docs/adr/](./docs/adr/).
 ## Status
 
 Working today: `init`, unlock, list and search, view and copy fields, create,
-edit and delete secrets, all with a configurable password generator, and TOTP
-codes for two-factor logins.
+edit and delete secrets, all with a configurable password generator, TOTP
+codes for two-factor logins, and `export-keys` to move the keypair to another
+drive.
