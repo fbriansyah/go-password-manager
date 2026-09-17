@@ -209,6 +209,19 @@ password, so the zip adds no encryption of its own — it is a container, not a
 second vault (docs/adr/0009). `export-keys` never touches a Secret; the vault
 itself can be moved or backed up on its own, e.g. with git.
 
+On the other machine:
+
+```sh
+gopm import-keys gopm-keys-20260101-120000.zip
+```
+
+Verifies the manifest, the Identity's checksum, the master password, and that
+the Recipient actually pairs with the Identity, before writing anything.
+Refuses outright if a keypair already exists at the destination — remove it
+yourself first if you really mean to replace it. When no configuration
+exists yet, `import-keys` writes one, the same defaults `gopm init` would
+have chosen, so it doubles as machine setup (docs/adr/0010).
+
 ## Development
 
 ```sh
@@ -225,5 +238,5 @@ decisions behind it in [docs/adr/](./docs/adr/).
 
 Working today: `init`, unlock, list and search, view and copy fields, create,
 edit and delete secrets, all with a configurable password generator, TOTP
-codes for two-factor logins, and `export-keys` to move the keypair to another
-drive.
+codes for two-factor logins, and `export-keys`/`import-keys` to move the
+keypair to another drive or machine.

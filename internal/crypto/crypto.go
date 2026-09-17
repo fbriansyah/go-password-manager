@@ -125,6 +125,10 @@ func (s *Session) Decrypt(ciphertext []byte) ([]byte, error) {
 // CanRead reports whether this session carries an Identity.
 func (s *Session) CanRead() bool { return s.identity != nil }
 
+// RecipientString is this session's Recipient in the same text form
+// recipient.pub holds, so a caller can check the two actually pair up.
+func (s *Session) RecipientString() string { return s.recipient.String() }
+
 func encryptWithPassword(plaintext []byte, password string) ([]byte, error) {
 	r, err := age.NewScryptRecipient(password)
 	if err != nil {
