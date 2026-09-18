@@ -222,6 +222,20 @@ yourself first if you really mean to replace it. When no configuration
 exists yet, `import-keys` writes one, the same defaults `gopm init` would
 have chosen, so it doubles as machine setup (docs/adr/0010).
 
+## Changing the master password
+
+```sh
+gopm change-master-password
+```
+
+Asks for the current master password, then a new one twice, and reseals the
+Identity in place. Nothing else moves: the master password only ever protects
+the Identity, so every secret and the Recipient stay exactly as they were
+(docs/adr/0011). The new Identity is verified before it replaces the old one,
+and no copy that opens with the old password is left behind. Backups made
+earlier with `export-keys` still open with the password they were made with —
+make a fresh export afterwards.
+
 ## Development
 
 ```sh
@@ -239,4 +253,4 @@ decisions behind it in [docs/adr/](./docs/adr/).
 Working today: `init`, unlock, list and search, view and copy fields, create,
 edit and delete secrets, all with a configurable password generator, TOTP
 codes for two-factor logins, and `export-keys`/`import-keys` to move the
-keypair to another drive or machine.
+keypair to another drive or machine, and `change-master-password`.

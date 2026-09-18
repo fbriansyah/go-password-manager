@@ -1,0 +1,80 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/fbriansyah/go-password-manager/internal/config"
+	"github.com/fbriansyah/go-password-manager/internal/crypto"
+)
+
+func changeMasterPasswordCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "change-master-password",
+		Short: "Reseal the Identity with a new master password",
+		Long: "Opens the Identity with the current master password and writes it back encrypted with a new one.\n" +
+			"Secrets and the Recipient are untouched. Backups made earlier with `gopm export-keys`\n" +
+			"keep the master password they were made with.",
+		Args: cobra.NoArgs,
+		RunE: runChangeMasterPassword,
+	}
+}
+
+func runChangeMasterPassword(cmd *cobra.Command, _ []string) error {
+	dir, err := vaultDir()
+	if err != nil {
+		return err
+	}
+	// The .gopm.yaml override is looked for in the Vault folder, not in $PWD, so
+	// the Identity resealed is the one a `gopm` run in this folder would open
+	// (docs/adr/0001).
+	cfg, err := config.Load(dir)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(cfg.PrivateKeyPath); err != nil {
+		return fmt.Errorf("identity at %s cannot be opened: %w", cfg.PrivateKeyPath, err)
+	}
+
+	// The current password is verified before the new one is asked for, so a
+	// typo here fails fast instead of after two more prompts.
+	current, err := askPassword("Current master password: ")
+	if err != nil {
+		return err
+	}
+	session, err := crypto.Unlock(cfg.PrivateKeyPath, current)
+	if err != nil {
+		return err
+	}
+
+	next, err := askPassword("New master password: ")
+	if err != nil {
+		return err
+	}
+	if len(next) < 8 {
+		return fmt.Errorf("the master password must be at least 8 characters")
+	}
+	if next == current {
+		return fmt.Errorf("the new master password is the same as the current one")
+	}
+	again, err := askPassword("Repeat the new master password: ")
+	if err != nil {
+		return err
+	}
+	if next != again {
+		return fmt.Errorf("the master passwords do not match")
+	}
+
+	if err := crypto.ChangePassword(cfg.PrivateKeyPath, cfg.PublicKeyPath, session, next); err != nil {
+		return err
+	}
+
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "Master password changed for %s\n", cfg.PrivateKeyPath)
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Backups made with `gopm export-keys` before now still open with the previous master password.")
+	fmt.Fprintln(out, "Run `gopm export-keys` to make a fresh one.")
+	return nil
+}

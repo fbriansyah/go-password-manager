@@ -122,6 +122,50 @@ func (s *Session) Decrypt(ciphertext []byte) ([]byte, error) {
 	return plain, nil
 }
 
+// ChangePassword reseals the Identity held by s with newPassword and replaces
+// the file at identityPath with it. Secrets and the Recipient are untouched —
+// the Master Password only ever protects the Identity (docs/adr/0011).
+//
+// The new file is written beside the old one, opened again with newPassword,
+// and its Recipient compared to recipientPath before it is renamed into place,
+// so the Identity on disk is complete and openable at every instant.
+func ChangePassword(identityPath, recipientPath string, s *Session, newPassword string) error {
+	if s == nil || s.identity == nil {
+		return errors.New("this session can only write; there is no identity to reseal")
+	}
+	if newPassword == "" {
+		return errors.New("the master password cannot be empty")
+	}
+	want, err := RecipientOnly(recipientPath)
+	if err != nil {
+		return err
+	}
+	sealed, err := encryptWithPassword([]byte(s.identity.String()+"\n"), newPassword)
+	if err != nil {
+		return err
+	}
+
+	tmp := identityPath + ".tmp"
+	os.Remove(tmp) // a leftover from an earlier interrupted run is never the real Identity
+	if err := writeNew(tmp, sealed, 0o600); err != nil {
+		return err
+	}
+	check, err := Unlock(tmp, newPassword)
+	if err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("the resealed identity could not be opened again: %w", err)
+	}
+	if check.RecipientString() != want.RecipientString() {
+		os.Remove(tmp)
+		return errors.New("the resealed identity does not match the recipient; the identity was left unchanged")
+	}
+	if err := os.Rename(tmp, identityPath); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("could not replace %s: %w", identityPath, err)
+	}
+	return nil
+}
+
 // CanRead reports whether this session carries an Identity.
 func (s *Session) CanRead() bool { return s.identity != nil }
 

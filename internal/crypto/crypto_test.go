@@ -121,3 +121,70 @@ func TestGenerateKeypairRefusesToOverwriteAnIdentity(t *testing.T) {
 		t.Fatalf("the error message does not explain itself: %v", err)
 	}
 }
+
+func TestChangePasswordRetiresTheOldOneAndKeepsSecretsReadable(t *testing.T) {
+	id, rc := keys(t, "old-master-password")
+	s, err := crypto.Unlock(id, "old-master-password")
+	if err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	ct, err := s.Encrypt([]byte("sealed before the change"))
+	if err != nil {
+		t.Fatalf("Encrypt: %v", err)
+	}
+
+	if err := crypto.ChangePassword(id, rc, s, "new-master-password"); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	if _, err := crypto.Unlock(id, "old-master-password"); !errors.Is(err, crypto.ErrWrongPassword) {
+		t.Fatalf("old password still opens the identity: %v", err)
+	}
+	after, err := crypto.Unlock(id, "new-master-password")
+	if err != nil {
+		t.Fatalf("Unlock with the new password: %v", err)
+	}
+	plain, err := after.Decrypt(ct)
+	if err != nil {
+		t.Fatalf("Decrypt after the change: %v", err)
+	}
+	if string(plain) != "sealed before the change" {
+		t.Fatalf("plaintext changed: %s", plain)
+	}
+	if after.RecipientString() != s.RecipientString() {
+		t.Fatal("the recipient changed; it must not")
+	}
+	if _, err := os.Stat(id + ".tmp"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary file left behind: %v", err)
+	}
+}
+
+func TestChangePasswordLeavesTheIdentityAloneWhenTheRecipientDoesNotMatch(t *testing.T) {
+	id, _ := keys(t, "old-master-password")
+	_, otherRecipient := keys(t, "someone-else")
+	before, _ := os.ReadFile(id)
+	s, _ := crypto.Unlock(id, "old-master-password")
+
+	err := crypto.ChangePassword(id, otherRecipient, s, "new-master-password")
+	if err == nil {
+		t.Fatal("a recipient from another keypair was accepted")
+	}
+	after, _ := os.ReadFile(id)
+	if string(before) != string(after) {
+		t.Fatal("the identity was rewritten despite the failed check")
+	}
+	if _, err := crypto.Unlock(id, "old-master-password"); err != nil {
+		t.Fatalf("old password no longer opens the untouched identity: %v", err)
+	}
+	if _, err := os.Stat(id + ".tmp"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary file left behind: %v", err)
+	}
+}
+
+func TestChangePasswordRefusesAWriteOnlySession(t *testing.T) {
+	id, rc := keys(t, "old-master-password")
+	s, _ := crypto.RecipientOnly(rc)
+	if err := crypto.ChangePassword(id, rc, s, "new-master-password"); err == nil {
+		t.Fatal("a session without an identity was accepted")
+	}
+}
