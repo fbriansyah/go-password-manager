@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"errors"
+
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -48,4 +50,29 @@ func (m unlockModel) View(width int) string {
 	}
 	lines = append(lines, styleHelp.Render("enter opens · esc quits"))
 	return b.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+}
+
+// handleUnlockKey answers a key on the unlock screen: enter tries the Master
+// Password, esc quits, anything else goes to the input.
+func (m Model) handleUnlockKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch shortcut(msg) {
+	case "esc", "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "enter":
+		if m.unlock.busy {
+			return m, nil
+		}
+		password := m.unlock.input.Value()
+		if password == "" {
+			m.unlock.err = errors.New("the master password cannot be empty")
+			return m, nil
+		}
+		m.unlock.busy, m.unlock.err = true, nil
+		m.unlock.input.SetValue("")
+		return m, unlockCmd(m.cfg, m.vaultDir, password)
+	}
+	var cmd tea.Cmd
+	m.unlock, cmd = m.unlock.Update(msg)
+	return m, cmd
 }
