@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/fbriansyah/go-password-manager/internal/secret"
@@ -28,39 +26,9 @@ type formOutcome struct {
 	secret *secret.Secret
 }
 
-// binding is one key the form answers to (CONTEXT.md: Binding). keys are the
-// canonical names shortcut() produces; label is how they are written on
-// screen when the keys themselves do not read well (arrows, digit ranges).
-// when, if set, must hold for the key to count. do performs the action for
-// the key that matched and reports the outcome. hint is the footer's word for
-// it (empty keeps it out of the footer); desc is the Help line.
-type binding struct {
-	keys  []string
-	label string
-	hint  string
-	desc  string
-	when  func(m *formModel) bool
-	do    func(m *formModel, k string) formOutcome
-}
-
-func (b binding) matches(m *formModel, k string) bool {
-	for _, want := range b.keys {
-		if want == k {
-			return b.when == nil || b.when(m)
-		}
-	}
-	return false
-}
-
-// keyLabel is the Binding's key as the user reads it, with ctrl written the
-// way this OS offers it (ADR-0007).
-func (b binding) keyLabel() string {
-	l := b.label
-	if l == "" {
-		l = strings.Join(b.keys, "/")
-	}
-	return strings.ReplaceAll(l, "ctrl+", modLabel())
-}
+// formBinding is a Binding of the form: it acts on the formModel and reports
+// a formOutcome.
+type formBinding = binding[formModel, formOutcome]
 
 func none(f func(m *formModel)) func(*formModel, string) formOutcome {
 	return func(m *formModel, _ string) formOutcome { f(m); return formOutcome{} }
@@ -82,7 +50,7 @@ var digitKeys = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 
 // formBindings are the keys of the form itself, in the order the footer and
 // Help show them.
-var formBindings = []binding{
+var formBindings = []formBinding{
 	{keys: []string{"tab"}, hint: "move", desc: "move to the next input",
 		do: none(func(m *formModel) { m.moveFocus(1) })},
 	{keys: []string{"shift+tab"}, desc: "move to the previous input",
@@ -129,7 +97,7 @@ var formBindings = []binding{
 // panelBindings are the keys of the generator panel. While it is open they
 // replace formBindings entirely: ctrl+s here saves the Policy, not the
 // Secret, and nothing falls through to the field rows underneath.
-var panelBindings = []binding{
+var panelBindings = []formBinding{
 	{keys: []string{"up", "down"}, label: "↑/↓", hint: "knob", desc: "pick a knob",
 		do: func(m *formModel, k string) formOutcome {
 			m.moveGenKnob(dir(k))
@@ -155,7 +123,7 @@ var panelBindings = []binding{
 }
 
 // bindings are the Bindings in force right now: the panel's while it is open.
-func (m formModel) bindings() []binding {
+func (m formModel) bindings() []formBinding {
 	if m.genOpen {
 		return panelBindings
 	}
@@ -188,16 +156,8 @@ func (m formModel) handle(msg tea.KeyPressMsg) (formModel, formOutcome, tea.Cmd)
 	return m, formOutcome{}, cmd
 }
 
-// footer is the one-line hint under the form: every Binding with a hint.
-func (m formModel) footer() string {
-	var parts []string
-	for _, b := range m.bindings() {
-		if b.hint != "" {
-			parts = append(parts, b.keyLabel()+" "+b.hint)
-		}
-	}
-	return strings.Join(parts, " · ")
-}
+// footer is the one-line hint under the form.
+func (m formModel) footer() string { return footer(m.bindings()) }
 
 // help is Help for whichever of the form or the panel is showing.
 func (m formModel) help() []helpSection {
@@ -205,11 +165,7 @@ func (m formModel) help() []helpSection {
 	if m.genOpen {
 		title = "Generate password"
 	}
-	keys := make([]helpKey, 0, len(m.bindings()))
-	for _, b := range m.bindings() {
-		keys = append(keys, helpKey{b.keyLabel(), b.desc})
-	}
-	return []helpSection{{title, keys}}
+	return []helpSection{{title, helpRows(m.bindings())}}
 }
 
 // navigable reports whether up/down move between inputs rather than lines:

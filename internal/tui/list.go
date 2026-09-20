@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/list"
-	tea "charm.land/bubbletea/v2"
 
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 )
@@ -30,85 +29,6 @@ func (e entry) Description() string {
 // FilterValue lets a search reach the title, the description, and the tags.
 func (e entry) FilterValue() string {
 	return strings.Join(append([]string{e.data.Meta.Title, e.data.Meta.Description}, e.data.Meta.Tags...), " ")
-}
-
-// handleListKey answers a key on the list screen, in either focus mode: the
-// list itself, or the detail pane once tab has moved the focus there.
-func (m Model) handleListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	k := shortcut(msg)
-	if m.list.FilterState() == list.Filtering {
-		var cmd tea.Cmd
-		m.list, cmd = m.list.Update(msg)
-		return m, cmd
-	}
-	switch k {
-	case "q", "ctrl+c":
-		m.quitting = true
-		return m, tea.Quit
-	case "?":
-		return m.openHelp(), nil
-	case "n":
-		m.form = newForm(m.cfg.Generator)
-		m.screen = screenForm
-		m.setStatus("", false)
-		return m, nil
-	case "e":
-		s := m.current()
-		if s == nil {
-			return m, nil
-		}
-		m.form = editForm(m.cfg.Generator, m.currentSlug(), s)
-		m.screen = screenForm
-		m.setStatus("", false)
-		return m, nil
-	case "d":
-		s := m.current()
-		if s == nil {
-			return m, nil
-		}
-		m.deleteSlug = m.currentSlug()
-		m.deleteTitle = s.Meta.Title
-		m.deleteIndex = m.list.Index()
-		m.screen = screenConfirmDelete
-		return m, nil
-	case "tab":
-		m.detail.focused = !m.detail.focused
-		m.detail.reveal = false
-		return m, nil
-	case "esc":
-		if m.detail.focused {
-			m.detail.focused = false
-			m.detail.reveal = false
-			return m, nil
-		}
-	case "r":
-		if m.detail.focused {
-			m.detail.reveal = !m.detail.reveal
-			return m, nil
-		}
-	case "c":
-		if m.detail.focused {
-			f, ok := m.focusedField()
-			if !ok {
-				return m, nil
-			}
-			return m, copyCmd(f)
-		}
-	case "j", "down":
-		if m.detail.focused {
-			m.moveField(1)
-			return m, nil
-		}
-	case "k", "up":
-		if m.detail.focused {
-			m.moveField(-1)
-			return m, nil
-		}
-	}
-	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
-	m.clampField()
-	return m, cmd
 }
 
 func (m *Model) setEntries(entries []entry, selectSlug string) {
