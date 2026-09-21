@@ -339,8 +339,5 @@ func (m Model) statusLine() string {
 	if left := time.Until(m.clearsAt); left > 0 {
 		return styleOK.Render(fmt.Sprintf("copied to clipboard · cleared in %ds", int(left.Seconds()+0.5)))
 	}
-	if m.detail.focused {
-		return styleHelp.Render("j/k pick field · c copy · r reveal · e edit · d delete · esc back to list · ? help · q quit")
-	}
-	return styleHelp.Render("↑/↓ pick · / search · tab to detail · n new · e edit · d delete · ? help · q quit")
+	return styleHelp.Render(m.listFooter())
 }

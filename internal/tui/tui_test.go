@@ -608,3 +608,29 @@ func TestTheDetailPaneKeepsTimeOnlyWhileATOTPFieldIsHighlighted(t *testing.T) {
 		t.Fatal("highlighting a Secret with a TOTP Field did not start the clock")
 	}
 }
+
+// The list footer and Help are drawn from the same Bindings that answer the
+// keys, in whichever focus mode the screen is in.
+func TestListFooterAndHelpAreDrawnFromTheBindings(t *testing.T) {
+	withKeyOS(t, "darwin")
+	m := unlocked(t)
+	footer := m.View().Content
+	for _, want := range []string{"↑/↓, j/k pick", "/ search", "tab to detail", "n new", "? help", "q, ctrl+c quit"} {
+		if !strings.Contains(footer, want) {
+			t.Errorf("list footer lacks %q:\n%s", want, footer)
+		}
+	}
+	m = update(t, m, key("tab"))
+	footer = m.View().Content
+	for _, want := range []string{"j/k, ↑/↓ pick field", "c copy", "r reveal", "esc back to list"} {
+		if !strings.Contains(footer, want) {
+			t.Errorf("detail footer lacks %q:\n%s", want, footer)
+		}
+	}
+	help := helpView(listHelp(), 120)
+	for _, want := range []string{"Secret list", "Detail", "General", "search by title", "reveal or hide a masked value", "q, ctrl+c"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("list Help lacks %q:\n%s", want, help)
+		}
+	}
+}
