@@ -63,3 +63,11 @@ _Avoid_: TOTP secret, key, token
 **Code**:
 The short group of digits derived from an Authenticator Seed and the current time; it is what a TOTP Field copies and what the detail pane shows, and it is worth nothing once its period is over.
 _Avoid_: OTP, token, pin
+
+**Import**:
+Moving Secrets from another password manager into the Vault, read from one file that application produced. It only ever adds: it never overwrites a Secret and never merges into one. Distinct from `import-keys`, which installs an Identity and a Recipient rather than Secrets.
+_Avoid_: migrate, restore, sync
+
+**Source Format**:
+One shape of file Import understands, which knows how to recognise itself from a file's header and how to read each of its rows into a Secret. It knows nothing about the Vault, slugs, or encryption.
+_Avoid_: provider, adapter, parser
