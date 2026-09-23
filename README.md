@@ -222,6 +222,44 @@ yourself first if you really mean to replace it. When no configuration
 exists yet, `import-keys` writes one, the same defaults `gopm init` would
 have chosen, so it doubles as machine setup (docs/adr/0010).
 
+## Coming from another password manager
+
+```sh
+gopm import-secrets 1PasswordExport-20260101-120000.csv
+```
+
+Reads an export another password manager produced and stores every login it
+carries as a secret in the current vault. The format is recognised from the
+file's header, so normally you name nothing; `--from=1password` forces one for
+an export whose header has drifted (gopm knows `1password` today).
+
+Import only ever adds. An existing secret is never overwritten and never
+merged into: a title that would collide with one already in the vault — or
+with an earlier row in the same file — is numbered instead, so three logins
+called `Packtpub` become `Packtpub`, `Packtpub 2`, and `Packtpub 3`. Every
+shift is named in the report so you can rename them properly afterwards
+(docs/adr/0012).
+
+The whole file is checked before anything is written: one unreadable row —
+a TOTP seed that will not parse, a row with no title — refuses the import and
+leaves the vault untouched. To see what would happen without writing:
+
+```sh
+gopm import-secrets --dry-run 1PasswordExport-20260101-120000.csv
+```
+
+A dry run writes nothing, so it asks for no master password.
+
+Each row becomes one secret: the title and tags become meta (`Favorite` and
+`Archived` carry across as the tags `favorite` and `archived`), and the
+remaining columns become fields in the order a login is performed — Username,
+Password, TOTP, Website, Notes. An empty column produces no field at all, and
+values cross unchanged: no URL is normalised and no `otpauth://` URI is
+rewritten.
+
+The export is left where it is. It still holds every password in plain text,
+so delete it once the import looks right.
+
 ## Changing the master password
 
 ```sh
@@ -244,13 +282,15 @@ go test ./...
 
 The domain layer is independent of the TUI: `internal/secret` (model, codec,
 field types), `internal/crypto` (age), `internal/vault` (storage, with a
-filesystem and an in-memory implementation), `internal/tui` (bubbletea),
-`cmd/` (cobra). The vocabulary is in [CONTEXT.md](./CONTEXT.md) and the design
-decisions behind it in [docs/adr/](./docs/adr/).
+filesystem and an in-memory implementation), `internal/importer` (source
+formats and import planning), `internal/tui` (bubbletea), `cmd/` (cobra).
+The vocabulary is in [CONTEXT.md](./CONTEXT.md) and the design decisions
+behind it in [docs/adr/](./docs/adr/).
 
 ## Status
 
 Working today: `init`, unlock, list and search, view and copy fields, create,
 edit and delete secrets, all with a configurable password generator, TOTP
-codes for two-factor logins, and `export-keys`/`import-keys` to move the
-keypair to another drive or machine, and `change-master-password`.
+codes for two-factor logins, `export-keys`/`import-keys` to move the
+keypair to another drive or machine, `change-master-password`, and
+`import-secrets` to fill a vault from a 1Password CSV export.
