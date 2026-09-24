@@ -13,8 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/fbriansyah/go-password-manager/internal/clipboard"
-	"github.com/fbriansyah/go-password-manager/internal/config"
-	"github.com/fbriansyah/go-password-manager/internal/crypto"
+	"github.com/fbriansyah/go-password-manager/internal/keys"
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 	"github.com/fbriansyah/go-password-manager/internal/vault"
 )
@@ -31,17 +30,20 @@ const (
 
 // Model is the whole TUI application.
 type Model struct {
-	vaultDir string
-	cfg      config.Config
+	// loc is the Vault this run is pointed at and the keys that open it.
+	loc keys.Location
+	// unlock is the seam the unlock screen reaches a Vault through. It is
+	// loc.Unlock in the application; a test puts a Vault that needs no Master
+	// Password in its place, so the suite pays for scrypt exactly once.
+	unlock func(password string) (vault.Vault, error)
 
-	session *crypto.Session
-	store   vault.Vault
+	store vault.Vault
 
-	screen screen
-	unlock unlockModel
-	list   list.Model
-	detail detailModel
-	form   formModel
+	screen   screen
+	unlockUI unlockModel
+	list     list.Model
+	detail   detailModel
+	form     formModel
 
 	// deleteSlug and deleteTitle name the Secret screenConfirmDelete is asking
 	// about; deleteIndex is where it sat in the list, so the selection can
@@ -64,8 +66,8 @@ type Model struct {
 	fatalError error
 }
 
-// New prepares the application for the Vault at vaultDir.
-func New(vaultDir string, cfg config.Config) Model {
+// New prepares the application for the Vault at loc.
+func New(loc keys.Location) Model {
 	l := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "Secret"
 	l.SetShowHelp(false)
@@ -74,10 +76,10 @@ func New(vaultDir string, cfg config.Config) Model {
 	// — v in bubbles v2 — would otherwise close the Vault on a stray key.
 	l.DisableQuitKeybindings()
 	return Model{
-		vaultDir: vaultDir,
-		cfg:      cfg,
+		loc:      loc,
+		unlock:   loc.Unlock,
 		screen:   screenUnlock,
-		unlock:   newUnlock(vaultDir),
+		unlockUI: newUnlock(loc.Dir),
 		list:     l,
 	}
 }
@@ -124,7 +126,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case unlockedMsg:
-		m.session, m.store = msg.session, msg.store
+		m.store = msg.store
 		m.screen = screenList
 		m.setEntries(msg.entries, "")
 		if len(msg.skipped) > 0 {
@@ -136,8 +138,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case failedMsg:
 		if m.screen == screenUnlock {
-			m.unlock.busy = false
-			m.unlock.err = msg.err
+			m.unlockUI.busy = false
+			m.unlockUI.err = msg.err
 			return m, nil
 		}
 		if m.screen == screenForm {
@@ -219,7 +221,7 @@ func (m Model) handleFormKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.form, out, cmd = m.form.handle(msg)
 	// A Policy changed in the panel outlives the form (docs/milestone-3.md).
-	m.cfg.Generator = m.form.policy
+	m.loc.Config.Generator = m.form.policy
 	switch out.kind {
 	case formSubmit:
 		if m.form.editSlug != "" {
@@ -231,7 +233,7 @@ func (m Model) handleFormKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.setStatus("", false)
 		return m, nil
 	case formSavePolicy:
-		return m, saveGeneratorCmd(m.cfg.Generator)
+		return m, saveGeneratorCmd(m.loc.Config.Generator)
 	case formOpenHelp:
 		return m.openHelp(), nil
 	}
@@ -258,7 +260,7 @@ func (m Model) delegate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch m.screen {
 	case screenUnlock:
-		m.unlock, cmd = m.unlock.Update(msg)
+		m.unlockUI, cmd = m.unlockUI.Update(msg)
 	case screenForm:
 		m.form, cmd = m.form.Update(msg)
 	default:
@@ -306,7 +308,7 @@ func (m Model) content() string {
 	}
 	switch m.screen {
 	case screenUnlock:
-		return m.unlock.View(m.width)
+		return m.unlockUI.View(m.width)
 	case screenForm:
 		return m.form.View(m.width)
 	case screenConfirmDelete:

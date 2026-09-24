@@ -8,9 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/fbriansyah/go-password-manager/internal/config"
-	"github.com/fbriansyah/go-password-manager/internal/crypto"
 	"github.com/fbriansyah/go-password-manager/internal/importer"
+	"github.com/fbriansyah/go-password-manager/internal/keys"
 	"github.com/fbriansyah/go-password-manager/internal/vault"
 )
 
@@ -39,14 +38,7 @@ func importSecretsCmd() *cobra.Command {
 }
 
 func runImportSecrets(cmd *cobra.Command, args []string) error {
-	dir, err := vaultDir()
-	if err != nil {
-		return err
-	}
-	// The .gopm.yaml override is looked for in the Vault folder, not in $PWD,
-	// so the Secrets are encrypted to the Recipient a `gopm` run in this
-	// folder would use (docs/adr/0001).
-	cfg, err := config.Load(dir)
+	loc, err := keys.Locate(directory)
 	if err != nil {
 		return err
 	}
@@ -60,14 +52,7 @@ func runImportSecrets(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// A dry run writes nothing, so it needs no ability to write and no proof
-	// of ownership: the Recipient alone opens a Vault well enough to list the
-	// slugs already taken (docs/adr/0012).
-	session, err := importSession(cfg)
-	if err != nil {
-		return err
-	}
-	store, err := vault.Open(dir, session)
+	store, err := importStore(loc)
 	if err != nil {
 		return err
 	}
@@ -111,22 +96,27 @@ func resolveFormat(data []byte) (importer.Format, error) {
 	return f, nil
 }
 
-// importSession opens the Vault's cipher. A real import asks for the Master
-// Password — adding hundreds of Secrets is an act of ownership, not of folder
-// access — while a dry run, which writes nothing, needs only the Recipient
+// importStore opens the Vault an import writes into. A real import asks for
+// the Master Password — adding hundreds of Secrets is an act of ownership, not
+// of folder access — while a dry run, which writes nothing, needs no proof of
+// ownership at all: the Recipient alone lists the slugs already taken
 // (docs/adr/0012).
-func importSession(cfg config.Config) (*crypto.Session, error) {
+func importStore(loc keys.Location) (vault.Vault, error) {
 	if importSecretsDryRun {
-		return crypto.RecipientOnly(cfg.PublicKeyPath)
+		session, err := loc.Recipient()
+		if err != nil {
+			return nil, err
+		}
+		return loc.Vault(session)
 	}
-	if _, err := os.Stat(cfg.PrivateKeyPath); err != nil {
-		return nil, fmt.Errorf("identity at %s cannot be opened: %w", cfg.PrivateKeyPath, err)
+	if err := loc.RequireIdentity(); err != nil {
+		return nil, err
 	}
 	password, err := askPassword("Master password: ")
 	if err != nil {
 		return nil, err
 	}
-	return crypto.Unlock(cfg.PrivateKeyPath, password)
+	return loc.Unlock(password)
 }
 
 // reportPlan prints what the import found, naming every title it had to shift

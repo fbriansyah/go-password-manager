@@ -73,7 +73,10 @@ func runInit(cmd *cobra.Command, _ []string) error {
 // askPassword reads a password without echoing it. If the input is not a
 // terminal the read is refused — a password must not arrive through a pipe that
 // is easily kept in shell history or logs.
-func askPassword(prompt string) (string, error) {
+//
+// It is a var so a test can put a scripted prompt in its place; nothing
+// changes it at runtime.
+var askPassword = func(prompt string) (string, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
 		return "", fmt.Errorf("the master password must be typed in a terminal")

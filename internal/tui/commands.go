@@ -7,7 +7,6 @@ import (
 
 	"github.com/fbriansyah/go-password-manager/internal/clipboard"
 	"github.com/fbriansyah/go-password-manager/internal/config"
-	"github.com/fbriansyah/go-password-manager/internal/crypto"
 	"github.com/fbriansyah/go-password-manager/internal/generator"
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 	"github.com/fbriansyah/go-password-manager/internal/vault"
@@ -16,7 +15,6 @@ import (
 // Internal messages.
 type (
 	unlockedMsg struct {
-		session *crypto.Session
 		store   vault.Vault
 		entries []entry
 		skipped []string
@@ -39,16 +37,12 @@ type (
 	tickMsg        time.Time
 )
 
-// unlockCmd opens the Identity, then loads every Secret. Because the whole file
-// is encrypted, the list can only be shown once this step finished
-// (docs/adr/0004).
-func unlockCmd(cfg config.Config, vaultDir, password string) tea.Cmd {
+// unlockCmd performs the Unlock through the seam Model holds, then loads every
+// Secret. Because the whole file is encrypted, the list can only be shown once
+// this step finished (docs/adr/0004).
+func unlockCmd(unlock func(string) (vault.Vault, error), password string) tea.Cmd {
 	return func() tea.Msg {
-		session, err := crypto.Unlock(cfg.PrivateKeyPath, password)
-		if err != nil {
-			return failedMsg{err}
-		}
-		store, err := vault.Open(vaultDir, session)
+		store, err := unlock(password)
 		if err != nil {
 			return failedMsg{err}
 		}
@@ -56,7 +50,7 @@ func unlockCmd(cfg config.Config, vaultDir, password string) tea.Cmd {
 		if err != nil {
 			return failedMsg{err}
 		}
-		return unlockedMsg{session: session, store: store, entries: entries, skipped: skipped}
+		return unlockedMsg{store: store, entries: entries, skipped: skipped}
 	}
 }
 

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -9,6 +8,7 @@ import (
 
 	"github.com/fbriansyah/go-password-manager/internal/config"
 	"github.com/fbriansyah/go-password-manager/internal/export"
+	"github.com/fbriansyah/go-password-manager/internal/keys"
 )
 
 func importKeysCmd() *cobra.Command {
@@ -24,11 +24,10 @@ func importKeysCmd() *cobra.Command {
 }
 
 func runImportKeys(cmd *cobra.Command, args []string) error {
-	dir, err := vaultDir()
-	if err != nil {
-		return err
-	}
-	cfg, cfgPath, isNew, err := resolveImportConfig(dir)
+	// import-keys installs the very keypair a configuration points at, so it
+	// is the one command that may run before there is any configuration at
+	// all (docs/adr/0010).
+	loc, err := keys.LocateOrDefaults(directory)
 	if err != nil {
 		return err
 	}
@@ -43,43 +42,24 @@ func runImportKeys(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := export.Import(zipData, cfg, password); err != nil {
+	if err := export.Import(zipData, loc.Config, password); err != nil {
 		return err
 	}
-	if isNew {
-		if err := config.Write(cfgPath, cfg); err != nil {
-			os.Remove(cfg.PrivateKeyPath)
-			os.Remove(cfg.PublicKeyPath)
+	if !loc.Configured {
+		if err := config.Write(loc.ConfigPath, loc.Config); err != nil {
+			os.Remove(loc.Config.PrivateKeyPath)
+			os.Remove(loc.Config.PublicKeyPath)
 			return err
 		}
 	}
 
 	out := cmd.OutOrStdout()
-	fmt.Fprintf(out, "Identity   : %s\n", cfg.PrivateKeyPath)
-	fmt.Fprintf(out, "Recipient  : %s\n", cfg.PublicKeyPath)
-	if isNew {
-		fmt.Fprintf(out, "Config     : %s\n", cfgPath)
+	fmt.Fprintf(out, "Identity   : %s\n", loc.Config.PrivateKeyPath)
+	fmt.Fprintf(out, "Recipient  : %s\n", loc.Config.PublicKeyPath)
+	if !loc.Configured {
+		fmt.Fprintf(out, "Config     : %s\n", loc.ConfigPath)
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Run `gopm` in any folder to start storing secrets.")
 	return nil
-}
-
-// resolveImportConfig picks the config import-keys writes into: the existing
-// configuration for dir when there is one (so a Vault's .gopm.yaml override
-// is honored, docs/adr/0001), or fresh defaults — the same ones `gopm init`
-// would choose — when there is no configuration at all yet.
-func resolveImportConfig(dir string) (cfg config.Config, cfgPath string, isNew bool, err error) {
-	cfg, err = config.Load(dir)
-	if err == nil {
-		return cfg, cfg.Source, false, nil
-	}
-	if !errors.Is(err, config.ErrNotConfigured) {
-		return config.Config{}, "", false, err
-	}
-	cfg, cfgPath, err = config.Defaults()
-	if err != nil {
-		return config.Config{}, "", false, err
-	}
-	return cfg, cfgPath, true, nil
 }

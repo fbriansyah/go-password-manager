@@ -55,6 +55,10 @@ func Defaults() (Config, string, error) {
 	return Config{
 		PrivateKeyPath: filepath.Join(dir, "identity.age"),
 		PublicKeyPath:  filepath.Join(dir, "recipient.pub"),
+		// The Policy is seeded the same way Load seeds it, so a caller that
+		// never reads a file still holds a usable one. Write does not put it
+		// in the file — defaults stay inheritable (docs/adr/0005).
+		Generator: generator.Default(),
 	}, filepath.Join(dir, GlobalName), nil
 }
 

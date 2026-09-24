@@ -27,13 +27,13 @@ func withCurrent(f func(m *Model)) func(*Model, string) tea.Cmd {
 }
 
 func (m *Model) openNew() {
-	m.form = newForm(m.cfg.Generator)
+	m.form = newForm(m.loc.Config.Generator)
 	m.screen = screenForm
 	m.setStatus("", false)
 }
 
 func (m *Model) openEdit() {
-	m.form = editForm(m.cfg.Generator, m.currentSlug(), m.current())
+	m.form = editForm(m.loc.Config.Generator, m.currentSlug(), m.current())
 	m.screen = screenForm
 	m.setStatus("", false)
 }
