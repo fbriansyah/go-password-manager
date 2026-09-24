@@ -366,3 +366,52 @@ func TestAMissingIdentityIsRefusedBeforeAnyPrompt(t *testing.T) {
 		t.Fatalf("err = %v, want a refusal naming the identity", err)
 	}
 }
+
+// The refusal promises characters, so a passphrase that is long enough in
+// bytes but not in characters is still refused. Four CJK characters are twelve
+// bytes, which a byte count would have let through.
+func TestAMultiBytePassphraseIsMeasuredInCharacters(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	answers(t, "四字密碼")
+	_, err := gopm(t, "init")
+	if err == nil || !strings.Contains(err.Error(), "8 characters") {
+		t.Fatalf("err = %v, want a refusal naming the minimum length", err)
+	}
+}
+
+// Eight characters that are more than eight bytes are accepted: the rule is
+// about length, not about which script it is written in.
+func TestAMultiBytePassphraseOfEnoughCharactersIsAccepted(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	passphrase := "八個字的密碼短語"
+	answers(t, passphrase, passphrase)
+	if _, err := gopm(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	cfg, _, err := config.Defaults()
+	if err != nil {
+		t.Fatalf("Defaults: %v", err)
+	}
+	if _, err := crypto.Unlock(cfg.PrivateKeyPath, passphrase); err != nil {
+		t.Fatalf("the identity does not open with the passphrase it was made with: %v", err)
+	}
+}
+
+// A password that is going to be refused is refused before the repeat is asked
+// for, so nobody types a password twice only to be told it was unusable. The
+// scripted prompt treats an extra ask as an error, so a third prompt here
+// would surface as the wrong message.
+func TestARefusedPasswordIsCaughtBeforeTheRepeatIsAsked(t *testing.T) {
+	initialised(t)
+	answers(t, testPassword, testPassword) // current, then the same again as new
+	_, err := gopm(t, "change-master-password")
+	if err == nil || !strings.Contains(err.Error(), "same as the current one") {
+		t.Fatalf("err = %v, want the refusal rather than a third prompt", err)
+	}
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	answers(t, "short")
+	if _, err := gopm(t, "init"); err == nil || !strings.Contains(err.Error(), "8 characters") {
+		t.Fatalf("err = %v, want the refusal rather than a second prompt", err)
+	}
+}
