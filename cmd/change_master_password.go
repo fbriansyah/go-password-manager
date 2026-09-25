@@ -41,22 +41,10 @@ func runChangeMasterPassword(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	next, err := askPassword("New master password: ")
+	next, err := askNewMasterPassword(
+		"New master password: ", "Repeat the new master password: ", current)
 	if err != nil {
 		return err
-	}
-	if len(next) < 8 {
-		return fmt.Errorf("the master password must be at least 8 characters")
-	}
-	if next == current {
-		return fmt.Errorf("the new master password is the same as the current one")
-	}
-	again, err := askPassword("Repeat the new master password: ")
-	if err != nil {
-		return err
-	}
-	if next != again {
-		return fmt.Errorf("the master passwords do not match")
 	}
 
 	if err := crypto.ChangePassword(loc.Config.PrivateKeyPath, loc.Config.PublicKeyPath, session, next); err != nil {
