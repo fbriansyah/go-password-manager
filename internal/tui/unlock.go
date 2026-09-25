@@ -60,19 +60,19 @@ func (m Model) handleUnlockKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "enter":
-		if m.unlock.busy {
+		if m.unlockUI.busy {
 			return m, nil
 		}
-		password := m.unlock.input.Value()
+		password := m.unlockUI.input.Value()
 		if password == "" {
-			m.unlock.err = errors.New("the master password cannot be empty")
+			m.unlockUI.err = errors.New("the master password cannot be empty")
 			return m, nil
 		}
-		m.unlock.busy, m.unlock.err = true, nil
-		m.unlock.input.SetValue("")
-		return m, unlockCmd(m.cfg, m.vaultDir, password)
+		m.unlockUI.busy, m.unlockUI.err = true, nil
+		m.unlockUI.input.SetValue("")
+		return m, unlockCmd(m.unlock, password)
 	}
 	var cmd tea.Cmd
-	m.unlock, cmd = m.unlock.Update(msg)
+	m.unlockUI, cmd = m.unlockUI.Update(msg)
 	return m, cmd
 }

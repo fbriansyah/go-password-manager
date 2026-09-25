@@ -3,10 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/fbriansyah/go-password-manager/internal/config"
 	"github.com/fbriansyah/go-password-manager/internal/crypto"
@@ -38,19 +36,10 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(out, "means every secret is gone permanently.")
 	fmt.Fprintln(out)
 
-	password, err := askPassword("Master password: ")
+	password, err := askNewMasterPassword(
+		"Master password: ", "Repeat the master password: ", "")
 	if err != nil {
 		return err
-	}
-	if len(password) < 8 {
-		return fmt.Errorf("the master password must be at least 8 characters")
-	}
-	again, err := askPassword("Repeat the master password: ")
-	if err != nil {
-		return err
-	}
-	if password != again {
-		return fmt.Errorf("the master passwords do not match")
 	}
 
 	if err := crypto.GenerateKeypair(cfg.PrivateKeyPath, cfg.PublicKeyPath, password); err != nil {
@@ -68,21 +57,4 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(out, "Back up the identity file now. Without it, secrets can never be opened again.")
 	fmt.Fprintln(out, "Run `gopm` in any folder to start storing secrets.")
 	return nil
-}
-
-// askPassword reads a password without echoing it. If the input is not a
-// terminal the read is refused — a password must not arrive through a pipe that
-// is easily kept in shell history or logs.
-func askPassword(prompt string) (string, error) {
-	fd := int(os.Stdin.Fd())
-	if !term.IsTerminal(fd) {
-		return "", fmt.Errorf("the master password must be typed in a terminal")
-	}
-	fmt.Fprint(os.Stderr, prompt)
-	b, err := term.ReadPassword(fd)
-	fmt.Fprintln(os.Stderr)
-	if err != nil {
-		return "", fmt.Errorf("could not read the master password: %w", err)
-	}
-	return strings.TrimSpace(string(b)), nil
 }

@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/fbriansyah/go-password-manager/internal/config"
 	"github.com/fbriansyah/go-password-manager/internal/export"
+	"github.com/fbriansyah/go-password-manager/internal/keys"
 )
 
 var exportKeysOutput string
@@ -28,19 +28,12 @@ func exportKeysCmd() *cobra.Command {
 }
 
 func runExportKeys(cmd *cobra.Command, _ []string) error {
-	dir, err := vaultDir()
+	loc, err := keys.Locate(directory)
 	if err != nil {
 		return err
 	}
-	// The .gopm.yaml override is looked for in the Vault folder, not in $PWD, so
-	// the exported keys match the ones a `gopm` run in this folder would use
-	// (docs/adr/0001).
-	cfg, err := config.Load(dir)
-	if err != nil {
+	if err := loc.RequireIdentity(); err != nil {
 		return err
-	}
-	if _, err := os.Stat(cfg.PrivateKeyPath); err != nil {
-		return fmt.Errorf("identity at %s cannot be opened: %w", cfg.PrivateKeyPath, err)
 	}
 
 	out := exportKeysOutput
@@ -60,7 +53,7 @@ func runExportKeys(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("could not create %s: %w", out, err)
 	}
-	if err := export.Keys(cfg, password, f); err != nil {
+	if err := export.Keys(loc.Config, password, f); err != nil {
 		f.Close()
 		os.Remove(out)
 		return err

@@ -11,6 +11,7 @@ import (
 	"github.com/fbriansyah/go-password-manager/internal/config"
 	"github.com/fbriansyah/go-password-manager/internal/crypto"
 	"github.com/fbriansyah/go-password-manager/internal/generator"
+	"github.com/fbriansyah/go-password-manager/internal/keys"
 	"github.com/fbriansyah/go-password-manager/internal/secret"
 	"github.com/fbriansyah/go-password-manager/internal/totp"
 	"github.com/fbriansyah/go-password-manager/internal/vault"
@@ -18,25 +19,22 @@ import (
 
 const testPassword = "master-password"
 
+// nopCipher stands in for the Vault's Cipher in the tests that are not about
+// encryption: it stores what it is handed. Every test but
+// TestNewOpensARealVault uses it, so the suite pays for scrypt once rather
+// than once per test.
+type nopCipher struct{}
+
+func (nopCipher) Encrypt(plaintext []byte) ([]byte, error)  { return plaintext, nil }
+func (nopCipher) Decrypt(ciphertext []byte) ([]byte, error) { return ciphertext, nil }
+
 // unlocked prepares a Vault holding one Secret (plus any extra ones given),
 // then runs the Unlock flow the way a user does: type the password, press
-// enter.
+// enter. The Unlock itself goes through Model's seam to an in-memory Vault —
+// what is under test here is the TUI, not age.
 func unlocked(t *testing.T, extra ...*secret.Secret) Model {
 	t.Helper()
-	keyDir, vaultDir := t.TempDir(), t.TempDir()
-	idPath := filepath.Join(keyDir, "identity.age")
-	recPath := filepath.Join(keyDir, "recipient.pub")
-	if err := crypto.GenerateKeypair(idPath, recPath, testPassword); err != nil {
-		t.Fatalf("GenerateKeypair: %v", err)
-	}
-	session, err := crypto.Unlock(idPath, testPassword)
-	if err != nil {
-		t.Fatalf("Unlock: %v", err)
-	}
-	store, err := vault.Open(vaultDir, session)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
+	store := vault.NewMem(nopCipher{})
 	if _, err := store.Create(&secret.Secret{
 		Meta: secret.Meta{Title: "Facebook", Description: "Facebook Credential", Tags: []string{"app"}},
 		Fields: []secret.Field{
@@ -53,15 +51,37 @@ func unlocked(t *testing.T, extra ...*secret.Secret) Model {
 	}
 
 	// config.Load always seeds Generator with generator.Default() before a file
-	// can override it; a hand-built Config here does the same so the panel is
+	// can override it; a hand-built Location here does the same so the panel is
 	// never opened onto the zero value.
-	m := New(vaultDir, config.Config{PrivateKeyPath: idPath, PublicKeyPath: recPath, Generator: generator.Default()})
+	keyDir := t.TempDir()
+	m := New(keys.Location{
+		Dir: t.TempDir(),
+		Config: config.Config{
+			PrivateKeyPath: filepath.Join(keyDir, "identity.age"),
+			PublicKeyPath:  filepath.Join(keyDir, "recipient.pub"),
+			Generator:      generator.Default(),
+		},
+		Configured: true,
+	})
+	m.unlock = func(string) (vault.Vault, error) { return store, nil }
+
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 32})
 	m = update(t, m, text(testPassword))
 	m = run(t, m, key("enter"))
 	if m.screen != screenList {
 		t.Fatalf("screen = %v, want screenList", m.screen)
 	}
+	return m
+}
+
+// refusing builds the same Model with an Unlock that always fails, for the
+// tests about a Master Password that does not open anything.
+func refusing(t *testing.T, err error) Model {
+	t.Helper()
+	m := unlocked(t)
+	m.screen = screenUnlock
+	m.unlockUI = newUnlock(m.loc.Dir)
+	m.unlock = func(string) (vault.Vault, error) { return nil, err }
 	return m
 }
 
@@ -155,15 +175,13 @@ func TestUnlockLoadsTheSecretList(t *testing.T) {
 }
 
 func TestWrongPasswordStaysOnUnlockScreen(t *testing.T) {
-	m := unlocked(t)
-	m.screen = screenUnlock
-	m.unlock = newUnlock(m.vaultDir)
+	m := refusing(t, crypto.ErrWrongPassword)
 	m = update(t, m, text("very-wrong"))
 	m = run(t, m, key("enter"))
 	if m.screen != screenUnlock {
 		t.Fatal("a wrong password must not open the vault")
 	}
-	if m.unlock.err == nil {
+	if m.unlockUI.err == nil {
 		t.Fatal("want an error message on the unlock screen")
 	}
 	if strings.Contains(m.View().Content, "very-wrong") {
@@ -489,7 +507,7 @@ func TestSavingThePolicyFromThePanelWritesTheGlobalConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Defaults: %v", err)
 	}
-	if err := config.Write(path, m.cfg); err != nil {
+	if err := config.Write(path, m.loc.Config); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 	m = update(t, m, text("n"))
@@ -505,7 +523,7 @@ func TestSavingThePolicyFromThePanelWritesTheGlobalConfig(t *testing.T) {
 	if !strings.Contains(m.status, "saved") || m.statusErr {
 		t.Fatalf("status = %q (err %v), want a saved confirmation", m.status, m.statusErr)
 	}
-	cfg, err := config.Load(m.vaultDir)
+	cfg, err := config.Load(m.loc.Dir)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -632,5 +650,51 @@ func TestListFooterAndHelpAreDrawnFromTheBindings(t *testing.T) {
 		if !strings.Contains(help, want) {
 			t.Errorf("list Help lacks %q:\n%s", want, help)
 		}
+	}
+}
+
+// TestNewOpensARealVault is the one test that pays for a real keypair. Every
+// other test replaces Model's Unlock seam, so nothing else would notice if New
+// stopped wiring loc.Unlock into it — and the application would then be unable
+// to open a Vault at all while the suite stayed green.
+func TestNewOpensARealVault(t *testing.T) {
+	confHome, vaultDir := t.TempDir(), t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", confHome)
+
+	cfg, cfgPath, err := config.Defaults()
+	if err != nil {
+		t.Fatalf("Defaults: %v", err)
+	}
+	if err := crypto.GenerateKeypair(cfg.PrivateKeyPath, cfg.PublicKeyPath, testPassword); err != nil {
+		t.Fatalf("GenerateKeypair: %v", err)
+	}
+	if err := config.Write(cfgPath, cfg); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	loc, err := keys.Locate(vaultDir)
+	if err != nil {
+		t.Fatalf("Locate: %v", err)
+	}
+	store, err := loc.Unlock(testPassword)
+	if err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	if _, err := store.Create(&secret.Secret{
+		Meta:   secret.Meta{Title: "Facebook"},
+		Fields: []secret.Field{{Type: "ps", Label: "Password", Value: "s3cret-value"}},
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	m := New(loc)
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 32})
+	m = update(t, m, text(testPassword))
+	m = run(t, m, key("enter"))
+	if m.screen != screenList {
+		t.Fatalf("screen = %v, want screenList — New did not wire loc.Unlock", m.screen)
+	}
+	if len(m.list.Items()) != 1 {
+		t.Fatalf("the real Vault shows %d secrets, want 1", len(m.list.Items()))
 	}
 }

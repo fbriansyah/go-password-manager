@@ -36,6 +36,10 @@ _Avoid_: public key file
 The act of opening the Identity with the Master Password at the start of a session, which makes every Secret in the Vault readable.
 _Avoid_: login, sign in, authenticate
 
+**Location**:
+The Vault folder a run is pointed at together with the Identity and Recipient that open it, resolved before any Master Password has been given. It knows where the keys are, never what they hold; Unlock is what turns one into a readable Vault.
+_Avoid_: context, environment, target, workspace, session
+
 **Field Type**:
 The property of a Field that decides how its value is displayed, how it is edited, and what gets copied from it; the copied value is not always the stored value.
 _Avoid_: kind, format, widget
