@@ -17,7 +17,17 @@ type nopCipher struct{}
 func (nopCipher) Encrypt(plaintext []byte) ([]byte, error)  { return plaintext, nil }
 func (nopCipher) Decrypt(ciphertext []byte) ([]byte, error) { return ciphertext, nil }
 
-func emptyVault() *vault.Mem { return vault.NewMem(nopCipher{}) }
+// emptyVault opens a Vault on a folder of its own. There is one implementation
+// of the Vault rules, so an import is planned against the same rules it will
+// later be applied through (docs/adr/0013).
+func emptyVault(t *testing.T) vault.Vault {
+	t.Helper()
+	v, err := vault.Open(t.TempDir(), nopCipher{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	return v
+}
 
 const onePasswordHeader = "Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes\n"
 
@@ -49,7 +59,7 @@ func importInto(t *testing.T, v vault.Vault, data []byte) *importer.Plan {
 }
 
 func TestImportsOneRowAsOneSecret(t *testing.T) {
-	v := emptyVault()
+	v := emptyVault(t)
 	importInto(t, v, onePasswordCSV(
 		`GitHub,https://github.com,octocat,hunter2,otpauth://totp/?secret=JBHB4LQQCADBOM3P,false,false,work,be careful`,
 	))
@@ -79,7 +89,7 @@ func TestImportsOneRowAsOneSecret(t *testing.T) {
 }
 
 func TestEmptyColumnProducesNoField(t *testing.T) {
-	v := emptyVault()
+	v := emptyVault(t)
 	importInto(t, v, onePasswordCSV(`Wifi,,,hunter2,,false,false,,`))
 
 	got, err := v.Load("wifi")
@@ -93,7 +103,7 @@ func TestEmptyColumnProducesNoField(t *testing.T) {
 }
 
 func TestTagsAreSplitAndFlagsBecomeTags(t *testing.T) {
-	v := emptyVault()
+	v := emptyVault(t)
 	importInto(t, v, onePasswordCSV(
 		`Fastmail,,,hunter2,,true,false,work;cloud,`,
 		`Old Thing,,,hunter2,,false,true,,`,
@@ -126,7 +136,7 @@ func TestTagsAreSplitAndFlagsBecomeTags(t *testing.T) {
 }
 
 func TestMultiLineNotesSurviveAsOneField(t *testing.T) {
-	v := emptyVault()
+	v := emptyVault(t)
 	importInto(t, v, onePasswordCSV(
 		"Router,,,hunter2,,false,false,,\"line one\nline two\nline three\"",
 	))
@@ -142,7 +152,7 @@ func TestMultiLineNotesSurviveAsOneField(t *testing.T) {
 }
 
 func TestCollidingTitlesAreSuffixedAndReported(t *testing.T) {
-	v := emptyVault()
+	v := emptyVault(t)
 	plan := importInto(t, v, onePasswordCSV(
 		`Packtpub,,alice,one,,false,false,,`,
 		`Packtpub,,bob,two,,false,false,,`,
@@ -178,7 +188,7 @@ func TestCollidingTitlesAreSuffixedAndReported(t *testing.T) {
 }
 
 func TestImportOnlyAddsNeverOverwrites(t *testing.T) {
-	v := emptyVault()
+	v := emptyVault(t)
 	csv := onePasswordCSV(
 		`GitHub,,alice,one,,false,false,,`,
 		`Fastmail,,bob,two,,false,false,,`,
@@ -230,7 +240,7 @@ func TestOneBadRowRefusesTheWholeFile(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v := emptyVault()
+			v := emptyVault(t)
 			f, err := importer.Detect(onePasswordCSV(tc.rows...))
 			if err != nil {
 				t.Fatalf("Detect: %v", err)
@@ -289,9 +299,11 @@ func TestFormatNamedOverridesDetection(t *testing.T) {
 	}
 }
 
-// failingVault is a Vault whose disk gives out after failAfter Creates.
+// failingVault is a Vault whose disk gives out after failAfter Creates. It
+// wraps a real Vault, so everything it does not override behaves exactly as
+// the rules say.
 type failingVault struct {
-	*vault.Mem
+	vault.Vault
 	failAfter int
 	created   int
 }
@@ -301,14 +313,14 @@ func (v *failingVault) Create(s *secret.Secret) (string, error) {
 		return "", errors.New("no space left on device")
 	}
 	v.created++
-	return v.Mem.Create(s)
+	return v.Vault.Create(s)
 }
 
 // A write that fails part way through stops and reports how far it got. It
 // does not roll back: those Secrets are correct, and deleting them is the
 // more dangerous move (docs/adr/0012).
 func TestApplyStopsAtAFailedWriteAndKeepsWhatItWrote(t *testing.T) {
-	v := &failingVault{Mem: emptyVault(), failAfter: 2}
+	v := &failingVault{Vault: emptyVault(t), failAfter: 2}
 	data := onePasswordCSV(
 		`One,,alice,a,,false,false,,`,
 		`Two,,bob,b,,false,false,,`,
@@ -341,7 +353,7 @@ func TestApplyStopsAtAFailedWriteAndKeepsWhatItWrote(t *testing.T) {
 }
 
 func TestApplyReportsHowManyItStored(t *testing.T) {
-	v := emptyVault()
+	v := emptyVault(t)
 	data := onePasswordCSV(
 		`One,,alice,a,,false,false,,`,
 		`Two,,bob,b,,false,false,,`,
@@ -363,7 +375,7 @@ func TestApplyReportsHowManyItStored(t *testing.T) {
 // A title arriving with trailing space must not gain a double space when it
 // is suffixed. The title crosses unchanged; only the suffix is ours.
 func TestSuffixDoesNotDoubleASpace(t *testing.T) {
-	v := emptyVault()
+	v := emptyVault(t)
 	plan := importInto(t, v, onePasswordCSV(
 		`[STG] Merchant Portal ,,alice,one,,false,false,,`,
 		`[STG] Merchant Portal ,,bob,two,,false,false,,`,
@@ -397,7 +409,7 @@ func TestNamedFormatReadsADriftedHeader(t *testing.T) {
 			"GitHub,https://github.com,octocat,hunter2,false,false,work\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v := emptyVault()
+			v := emptyVault(t)
 			plan, err := importer.Build(f, []byte(tc.csv), v)
 			if err != nil {
 				t.Fatalf("Build: %v", err)
@@ -426,7 +438,7 @@ func TestNamedFormatReadsADriftedHeader(t *testing.T) {
 // rather than importing a pile of untitled rows.
 func TestNamedFormatRefusesAFileWithNoTitle(t *testing.T) {
 	f, _ := importer.FormatNamed("1password")
-	_, err := importer.Build(f, []byte("Url,Username,Password\nx,alice,one\n"), emptyVault())
+	_, err := importer.Build(f, []byte("Url,Username,Password\nx,alice,one\n"), emptyVault(t))
 	if err == nil {
 		t.Fatal("Build accepted a file with no Title column")
 	}
