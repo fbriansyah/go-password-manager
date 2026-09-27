@@ -30,11 +30,15 @@ func (nopCipher) Decrypt(ciphertext []byte) ([]byte, error) { return ciphertext,
 
 // unlocked prepares a Vault holding one Secret (plus any extra ones given),
 // then runs the Unlock flow the way a user does: type the password, press
-// enter. The Unlock itself goes through Model's seam to an in-memory Vault —
-// what is under test here is the TUI, not age.
+// enter. The Unlock itself goes through Model's seam to a Vault on a folder of
+// its own, encrypted with nothing — what is under test here is the TUI, not
+// age (docs/adr/0013).
 func unlocked(t *testing.T, extra ...*secret.Secret) Model {
 	t.Helper()
-	store := vault.NewMem(nopCipher{})
+	store, err := vault.Open(t.TempDir(), nopCipher{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
 	if _, err := store.Create(&secret.Secret{
 		Meta: secret.Meta{Title: "Facebook", Description: "Facebook Credential", Tags: []string{"app"}},
 		Fields: []secret.Field{
