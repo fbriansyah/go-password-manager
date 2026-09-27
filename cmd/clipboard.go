@@ -16,7 +16,7 @@ func clipboardClearCmd() *cobra.Command {
 	var fingerprint string
 
 	cmd := &cobra.Command{
-		Use:    "clipboard-clear",
+		Use:    clipboard.ClearCommand,
 		Short:  "Clear the clipboard after a delay",
 		Hidden: true,
 		Args:   cobra.NoArgs,

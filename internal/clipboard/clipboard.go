@@ -4,18 +4,20 @@
 // pbcopy) instead of being handled in-process: on X11 and Wayland the clipboard
 // contents are owned by the process that copied them, so the value would vanish
 // the moment the TUI exits if we held it ourselves.
+//
+// Which of those tools this system has is the only thing this package cannot
+// decide for itself, so it is the only thing behind a seam (docs/adr/0014). The
+// rules — which tool an operating system prefers, and whether the clipboard
+// still holds the value we put there — live above it and are exercised without
+// a clipboard at all.
 package clipboard
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
-	"strings"
-	"syscall"
 	"time"
 )
 
@@ -26,39 +28,32 @@ const ClearAfter = 30 * time.Second
 // loudly rather than quietly doing nothing.
 var ErrNoTool = errors.New("no clipboard tool found (install wl-clipboard or xclip)")
 
-type tool struct {
-	copy  []string
-	paste []string
-	clear []string
+// ClearCommand is the name this binary answers to when it is re-run to clear
+// the clipboard. It is written once here and used at both ends: scheduleClear
+// spawns it, and cmd registers it.
+const ClearCommand = "clipboard-clear"
+
+// system is the system clipboard itself: put a value in it, read what is in it
+// now, empty it. wl-copy, xclip and pbcopy are three genuinely different ways
+// to hold a clipboard, and each is an adapter over this.
+type system interface {
+	put(value string) error
+	get() (string, error)
+	wipe() error
 }
 
-func detect() (tool, error) {
-	if runtime.GOOS == "darwin" {
-		if _, err := exec.LookPath("pbcopy"); err == nil {
-			return tool{copy: []string{"pbcopy"}, paste: []string{"pbpaste"}, clear: []string{"pbcopy"}}, nil
-		}
-	}
-	if _, err := exec.LookPath("wl-copy"); err == nil {
-		return tool{
-			copy:  []string{"wl-copy"},
-			paste: []string{"wl-paste", "--no-newline"},
-			clear: []string{"wl-copy", "--clear"},
-		}, nil
-	}
-	if _, err := exec.LookPath("xclip"); err == nil {
-		return tool{
-			copy:  []string{"xclip", "-selection", "clipboard"},
-			paste: []string{"xclip", "-selection", "clipboard", "-o"},
-			clear: []string{"xclip", "-selection", "clipboard"},
-		}, nil
-	}
-	return tool{}, ErrNoTool
-}
+// installed reports where a binary is, or an error if this system does not have
+// it. It is exec.LookPath in the application.
+type installed func(name string) (string, error)
 
-// Available reports whether copying is possible on this system.
-func Available() bool {
-	_, err := detect()
-	return err == nil
+// clipboard is the rules about a copied value, written above the seam.
+//
+// schedule arranges the later clear. It is a field rather than a direct call so
+// that a copy which succeeds is observable without a process being spawned; the
+// scheduling itself is still only done one way (see scheduleClear).
+type clipboard struct {
+	system   system
+	schedule func(fingerprint string) error
 }
 
 // Copy puts value in the clipboard and schedules its removal by re-running this
@@ -66,26 +61,47 @@ func Available() bool {
 // argument — only its fingerprint does — so it cannot leak through the process
 // list.
 func Copy(value string) error {
-	t, err := detect()
+	c, err := open(runtime.GOOS, exec.LookPath)
 	if err != nil {
 		return err
 	}
-	if err := run(t.copy, value); err != nil {
-		return err
-	}
-	return scheduleClear(fingerprint(value))
+	return c.copy(value)
 }
 
 // Clear empties the clipboard only if its fingerprint still matches, so a value
 // the user copied afterwards is not wiped along with it. An empty fingerprint
 // means clear unconditionally.
 func Clear(want string) error {
-	t, err := detect()
+	c, err := open(runtime.GOOS, exec.LookPath)
 	if err != nil {
 		return err
 	}
+	return c.clear(want)
+}
+
+// open picks the tool goos prefers among the ones this system has. The
+// operating system's name is an argument rather than a read of runtime.GOOS so
+// that every branch of that order is reachable from any machine.
+func open(goos string, have installed) (clipboard, error) {
+	for _, t := range knownTools(goos) {
+		if _, err := have(t.name()); err == nil {
+			return clipboard{system: t, schedule: scheduleClear}, nil
+		}
+	}
+	return clipboard{}, ErrNoTool
+}
+
+func (c clipboard) copy(value string) error {
+	if err := c.system.put(value); err != nil {
+		return err
+	}
+	// Only a value that reached the clipboard gets a clear scheduled for it.
+	return c.schedule(fingerprint(value))
+}
+
+func (c clipboard) clear(want string) error {
 	if want != "" {
-		current, err := output(t.paste)
+		current, err := c.system.get()
 		if err != nil {
 			// Clipboard empty or unreadable: nothing to clear.
 			return nil
@@ -94,38 +110,10 @@ func Clear(want string) error {
 			return nil
 		}
 	}
-	return run(t.clear, "")
+	return c.system.wipe()
 }
 
 func fingerprint(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
-}
-
-func scheduleClear(fp string) error {
-	self, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("could not schedule the clipboard clear: %w", err)
-	}
-	cmd := exec.Command(self, "clipboard-clear", "--after", ClearAfter.String(), "--fingerprint", fp)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // detach from the TUI
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("could not schedule the clipboard clear: %w", err)
-	}
-	return cmd.Process.Release()
-}
-
-func run(argv []string, stdin string) error {
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Stdin = strings.NewReader(stdin)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s failed: %w", argv[0], err)
-	}
-	return nil
-}
-
-func output(argv []string) (string, error) {
-	out, err := exec.Command(argv[0], argv[1:]...).Output()
-	return string(out), err
 }
